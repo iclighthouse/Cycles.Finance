@@ -72,9 +72,10 @@ In the above example, the next implied rate for ICP will be around 30.609 TCycle
 When the price of an asset starts to trade away from market prices, arbitragers see this as an opportunity to make risk-free returns. Therefore, they come in to trade the price back to market rates. This is a vital part of the ICP/Cycles ecosystem.
 
 
-## Usage
+## Usage (Command line interface)
 
 **Notes**
+- UI interaction interface: https://cycles.finance 
 - The basic unit of ICP in canister is e8s, 1 icp = 10^8 e8s;
 - The ICP/Cycles rate on IC network changes dynamically and is pegged to the XDR value, 1 XDR = 10^12 cycles (value approx. 1.4 USD).
 - The ICP/Cycles rate on this canister is automatically formed by the market and may deviate from other markets.
