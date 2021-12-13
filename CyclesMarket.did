@@ -1,0 +1,75 @@
+type Vol = record {swapCyclesVol: nat; swapIcpVol: nat; };
+type TxnResult = record { cycles: TokenValue; icpE8s: TokenValue; share: ShareChange; txid: Txid; };
+type TxnRecord = record {
+   account: principal;
+   cyclesWallet: opt principal;
+   data: opt blob;
+   fee: record { token0Fee: nat; token1Fee: nat; };
+   operation: OperationType;
+   share: ShareChange;
+   time: Time;
+   token0: TokenType;
+   token0Value: TokenValue;
+   token1: TokenType;
+   token1Value: TokenValue;
+   txid: Txid;
+};
+type Txid = blob;
+type TokenValue = variant { In: nat; NoChange; Out: nat; };
+type TokenType = variant { Cycles; DRC20: principal; Icp; };
+type Timestamp = nat;
+type Time = int;
+type ShareWeighted = record { shareTimeWeighted: nat; updateTime: Timestamp; };
+type ShareChange = variant { Burn: nat; Mint: nat; NoChange;};
+type PriceWeighted = record { cyclesTimeWeighted: nat;icpTimeWeighted: nat; updateTime: Timestamp;};
+type OperationType = variant { AddLiquidity; Claim; RemoveLiquidity; Swap;};
+type Liquidity = record {
+   cycles: nat;
+   icp: ICP;
+   priceWeighted: PriceWeighted;
+   share: nat;
+   shareWeighted: ShareWeighted;
+   swapCount: nat64;
+   unitValue: record { float64; float64; };
+   vol: Vol;
+};
+type ICP = record {e8s: nat64;};
+type FeeStatus = record {
+   fee: float64;
+   cumulFee: record { cyclesBalance: nat; icpBalance: nat; };
+   totalFee: record { cyclesBalance: nat; icpBalance: nat; };
+   myAllocable: opt record { cyclesBalance: nat; icpBalance: nat; };
+};
+type ErrorLog = record {
+   time: Timestamp;
+   user: principal;
+   withdraw: record { principal; nat; principal; nat; };
+};
+type Config = record {
+   CYCLES_LIMIT: opt nat;
+   FEE: opt nat;
+   ICP_FEE: opt nat64;
+   ICP_LIMIT: opt nat;
+   MAX_CACHE_NUMBER_PER: opt nat;
+   MAX_CACHE_TIME: opt nat;
+   MAX_STORAGE_TRIES: opt nat;
+   MIN_CYCLES: opt nat;
+   MIN_ICP_E8S: opt nat;
+   STORAGE_CANISTER: opt text;
+};
+type CyclesMarket = service {
+   getAccountId: (_account: principal) -> (text) query;
+   cyclesToIcp: (_account: principal, _data: opt blob) -> (TxnResult);
+   icpToCycles: (_icpE8s: nat, _cyclesWallet: principal, _data: opt blob) -> (TxnResult);
+   add: (_account: principal, _data: opt blob) -> (TxnResult);
+   remove: (_share: opt nat, _cyclesWallet: principal, _data: opt blob) -> (TxnResult);
+   claim: (_cyclesWallet: principal, _data: opt blob) -> (TxnResult);
+   count: (_account: opt principal) -> (nat) query;
+   liquidity: (_account: opt principal) -> (Liquidity) query;
+   feeStatus: (_account: opt principal) -> (FeeStatus) query;
+   lastTxids: (_account: opt principal) -> (vec Txid) query;
+   getEvents: (_account: opt principal) -> (vec TxnRecord) query;
+   txnRecord: (_txid: Txid) -> (opt TxnRecord) query;
+   getConfig: () -> (Config) query;
+};
+service : () -> CyclesMarket

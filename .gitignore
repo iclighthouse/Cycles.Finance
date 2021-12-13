@@ -1,0 +1,25 @@
+.DS_Store
+dist-ssr
+*.local
+.dfx
+.vessel
+.config
+.tmp
+
+# Various IDEs and Editors
+.vscode/
+.idea/
+.history
+**/*~
+
+# frontend code
+node_modules/
+dist/
+
+canister_ids.json
+icp-cycles.numbers
+CyclesMarket1204.mo
+CyclesMarket1206.mo
+Types1204.mo
+Types1206.mo
+.dfx/
