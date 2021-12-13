@@ -334,7 +334,7 @@ service : () -> CyclesMarket
 
 (doing) Development of UI interface, open source contract code.
 
-Upgrade to v2.0 with scalable storage of transaction records.
+Upgrade to v1.0.
 
 Opening up liquidity mining.
 
