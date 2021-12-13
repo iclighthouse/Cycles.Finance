@@ -49,6 +49,8 @@ CyclesFinance uses a pricing mechanism called the ‘multiplicative constant k m
 A and B represent the pool balance of each asset, and k is the total constant price of said pool.   
 In the liquidity pool, the first liquidity provider sets the initial price of the assets in the pool by supplying an equal value to both tokens. 
 
+**Swap**
+
 Buyers can then swap ICP/Cycles within the pool, based on the formula. Smart contracts running the rule use the above formula to take the amount of one asset from the buyer and send an equivalent amount of another asset purchased back to the buyer, keeping the total pool constant stable (k).
 
 **Example**: 
