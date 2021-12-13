@@ -1,5 +1,9 @@
 # Cycles.Finance
 
+**Website**: https://cycles.finance  
+**Canister Id**: ium3d-eqaaa-aaaak-aab4q-cai   
+**Module hash**(12/12): 1e7ddc190f82673ac163745577a86d47ffb36ede422467ba6292d547b7f05d69  
+
 ### Disclaimers.
 
 This project is in beta and may have defects.  It‘s a Dapp, please be knowledgeable and participate voluntarily at your own risk.
@@ -24,14 +28,49 @@ Swapping fee usage: All ICP charged is moved to the liquidity reward pool, 80% o
 #### Liquidity (AMM)
 
 Market making model: automatic market making model(AMM). Using a multiplicative constant K model (AB=K).     
-Liquidity reward pool:  
+
+#### Liquidity reward pool
+  
 - Liquidity providers receive liquidity rewards in proportion to the time-weighted share they hold.  
 - [Plan] Participate in the ICLighthouse liquidity mining program and receive ICL token rewards.
 
-## Usage
 
-**Canister Id**：ium3d-eqaaa-aaaak-aab4q-cai  
-**Module hash**(08/12): 1e7ddc190f82673ac163745577a86d47ffb36ede422467ba6292d547b7f05d69  
+## How does it work?
+
+CyclesFinance is designed to facilitate the swap of ICPs and Cycles in a different way to traditional exchanges.
+
+It does this by using Canister smart contracts, which allow users (called liquidity providers) to deposit ICPs/Cycles into pool. These smart contracts allow traders to buy and sell these assets. Users who trade these assets pay a fee which is then distributed to all liquidity providers proportionally (based on their contribution to the asset pool).
+
+**Liquidity pool**
+
+The liquidity pool holds ICPs and Cycles, which together represent a trading pair for those assets.
+
+CyclesFinance uses a pricing mechanism called the ‘multiplicative constant k market maker model’. The formula (A * B = k) is used to determine the pricing for the pair.   
+A and B represent the pool balance of each asset, and k is the total constant price of said pool.   
+In the liquidity pool, the first liquidity provider sets the initial price of the assets in the pool by supplying an equal value to both tokens. 
+
+Buyers can then swap ICP/Cycles within the pool, based on the formula. Smart contracts running the rule use the above formula to take the amount of one asset from the buyer and send an equivalent amount of another asset purchased back to the buyer, keeping the total pool constant stable (k).
+
+**Example**: 
+
+Let us imagine the ICP/Cycles liquidity pool contains 10 ICP(A) and 300 TCycles (B), therefore making the pool constant value 3000 (k).   
+This implies that the pool’s starting price is 30 TCycles per ICP. 
+
+Now, let us imagine a trader comes in and wants to buy 0.1 ICP. 
+
+The ICP/Cycles pool will now have:
+
+New A: 9.9 ICP (10 - 0.1)   
+k: 3000 (stays constant)  
+New B: 303.03 TCycles (3000 / 9.9)  
+Therefore, the pool would imply a price of 30.303 TCycles per ICP to keep k constant since you had to add 3.03 TCycles (303.03 TCycles – 300 TCycles) to the pool to buy 0.1 ICP.
+
+In the above example, the next implied rate for ICP will be around 30.609 TCycles per ICP (303.03 TCycles/9.9 ICP).
+
+When the price of an asset starts to trade away from market prices, arbitragers see this as an opportunity to make risk-free returns. Therefore, they come in to trade the price back to market rates. This is a vital part of the ICP/Cycles ecosystem.
+
+
+## Usage
 
 **Notes**
 - The basic unit of ICP in canister is e8s, 1 icp = 10^8 e8s;
