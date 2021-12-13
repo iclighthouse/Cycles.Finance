@@ -41,6 +41,8 @@ CyclesFinance is designed to facilitate the swap of ICPs and Cycles in a differe
 
 It does this by using Canister smart contracts, which allow users (called liquidity providers) to deposit ICPs/Cycles into pool. These smart contracts allow traders to buy and sell these assets. Users who trade these assets pay a fee which is then distributed to all liquidity providers proportionally (based on their contribution to the asset pool).
 
+![image](cf-swap.png)
+
 **Liquidity pool**
 
 The liquidity pool holds ICPs and Cycles, which together represent a trading pair for those assets.
