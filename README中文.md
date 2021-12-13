@@ -71,6 +71,44 @@ k: 3000 (保持不变)
 
 当一种资产的价格开始偏离市场价格进行交易时，套利者认为这是一个赚取无风险收益的机会。因此，他们进来交易，使价格回到市场价格。这是ICP/Cycles生态系统的一个重要部分。
 
+
+## 技术特性
+
+#### 实现最终一致性
+
+CyclesFinance面临的原子性问题主要有ICP内部转账和Cycles发送在异步过程中失败问题，我们采取了最大努力处理（Best Effort Commit）策略加上错误处理机制来保障最终一致性。
+
+具体做法是：
+- 在更新状态变量前，遇到异常则报错拒绝交易；
+- 已经有状态变量更新的情况下，确保本合约内部的状态变量能成功保存，外部调用采取了最大努力处理（Best Effort Commit）策略，但要防止重复交易，所以加入了错误处理机制；
+- 对于异常错误，需要管理者或者治理合约触发重发交易。对于无法接收Cycles的账户，管理者或者治理合约可以修改接收账户。
+
+#### 支持幂等性
+
+外部应用调用CyclesFinance遇到错误时，如果需要重复发送交易，可以避免重复交易的情况发生。
+- 交易txid是可计算的，并全局唯一。
+- 支持账户的nonce机制（即将支持）。
+
+#### Oracle报价支持
+
+ICP/Cycles交易形成的价格，可以作为IC网络上原生Oracle使用。CyclesFinance提供两种形式的Oracle价格，包括：  
+- 最新价格：通过CyclesFinance容器的liquidity(null)方法查询，返回值中cycles / icp.e8s 即表示每e8s多少cycles。
+- 时间加权价格：通过CyclesFinance容器的liquidity(null)方法查询，返回值中icpTimeWeighted表示icp的时间加权累计值，cyclesTimeWeighted表示cycles的时间加权累计值。可供外部用于各种时间加权价格的计算。
+![image](cf-priceweighted.png)
+
+#### 流动性挖矿支持
+
+CyclesFinance可以为流动性挖矿合约提供数据依据，为社区治理和项目经济模型提供创新空间。通过CyclesFinance容器的liquidity(<null)方法查询，返回值中shareTimeWeighted表示全局的流动性池份额的时间加权累计值；通过_getCumulShareWeighted(account)查询LP的流动性池份额的时间加权累计值。
+![image](cf-shareweighted.png)
+
+#### 交易挖矿支持
+
+CyclesFinance可以为交易挖矿提供数据依据，为社区治理和项目经济模型提供创新空间。通过CyclesFinance容器的liquidity(<null or account>)方法查询，返回值中vol值表示全局或账户的交易量累计值。
+
+#### 交易记录可扩展性存储（即将支持）
+
+CyclesFinance容器只存储近期交易记录，通过外部可扩展容器持久化存储交易记录，确保CyclesFinance能支撑大规模应用场景。
+
 ## 使用(命令行界面)
 
 **Notes**
