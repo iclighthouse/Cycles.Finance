@@ -98,7 +98,7 @@ ICP/Cycles交易形成的价格，可以作为IC网络上原生Oracle使用。Cy
 
 #### 流动性挖矿支持
 
-CyclesFinance可以为流动性挖矿合约提供数据依据，为社区治理和项目经济模型提供创新空间。通过CyclesFinance容器的liquidity(<null)方法查询，返回值中shareTimeWeighted表示全局的流动性池份额的时间加权累计值；通过_getCumulShareWeighted(account)查询LP的流动性池份额的时间加权累计值。
+CyclesFinance可以为流动性挖矿合约提供数据依据，为社区治理和项目经济模型提供创新空间。通过CyclesFinance容器的liquidity(null)方法查询，返回值中shareTimeWeighted表示全局的流动性池份额的时间加权累计值。
 ![image](cf-shareweighted.png)
 
 #### 交易挖矿支持
@@ -108,6 +108,8 @@ CyclesFinance可以为交易挖矿提供数据依据，为社区治理和项目�
 #### 交易记录可扩展性存储（即将支持）
 
 CyclesFinance容器只存储近期交易记录，通过外部可扩展容器持久化存储交易记录，确保CyclesFinance能支撑大规模应用场景。
+
+
 
 ## 使用(命令行界面)
 

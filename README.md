@@ -74,6 +74,45 @@ In the above example, the next implied rate for ICP will be around 30.609 TCycle
 When the price of an asset starts to trade away from market prices, arbitragers see this as an opportunity to make risk-free returns. Therefore, they come in to trade the price back to market rates. This is a vital part of the ICP/Cycles ecosystem.
 
 
+## Technical features
+
+#### Achieving ultimate consistency
+
+CyclesFinance faces atomicity problems mainly with ICP internal transfer failures and Cycles send failures. We use a Best Effort Commit strategy together with an error handling mechanism to ensure ultimate consistency.
+
+- Before updating state variables, an exception is thrown when an error is encountered.
+- It ensures that all internal state variables are successfully saved when some of them have already been updated, and external calls take a Best Effort Commit strategy, but to prevent duplicate transactions, so an error handling mechanism is added.
+- With regard to the error handling mechanism, it requires the administrator or governance contract to trigger a retransaction.  For accounts that are unable to receive Cycles, the manager or governance contract can modify the receiving account.
+
+#### Enhanced idempotency
+
+The idempotency prevents repeated executions when an external canister is submitted repeatedly in the event of an error in the call to CyclesFinance. 
+- The transaction txid is computable and globally unique.
+- The nonce mechanism for accounts is supported (to be supported soon).
+
+#### Oracle quotes support
+
+ICP/Cycles swap prices could be used as native Oracle quotes on the IC network. 
+CyclesFinance offers two forms of Oracle quotes, including    
+- Latest prices: The liquidity(null) method of the CyclesFinance canister is used to query the number of ICPs and Cycles in the liquidity pool. `cycles/icp.e8s` means the ICP/Cycles price.
+- Time-weighted prices: The liquidity(null) method of the CyclesFinance canister is used to query the time-weighted cumulative value of ICPs and Cycles.
+![image](cf-priceweighted.png)
+
+#### liquidity mining support
+
+CyclesFinance can provide a data resource for liquidity mining contracts as well as a space for innovation in community governance and economic models.
+The liquidity() method of the CyclesFinance canister is used to query the time-weighted cumulative value of the LP's liquidity pool share.
+![image](cf-shareweighted.png)
+
+#### Trading mining support
+
+CyclesFinance can provide data resources for trading mining. It can query the cumulative value of trading volume on a global or account basis.
+
+#### Scalable storage of transaction records (to be supported soon)
+
+To ensure that CyclesFinance can support large-scale application scenarios, the CyclesFinance canister stores only recent transactions, which are stored persistently via an external scalable canisters.
+
+
 ## Usage (Command line interface)
 
 **Notes**
