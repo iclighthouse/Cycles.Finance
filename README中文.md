@@ -1,6 +1,6 @@
 # Cycles.Finance
 
-**Website**: https://cycles.finance  
+**Website**: http://cycles.finance  
 **Canister Id**: ium3d-eqaaa-aaaak-aab4q-cai   
 **Module hash**(14/12): 19ee5e66085230b35fe86284c7144fe8e95b0fb4f08fc50bcb4d0f5b264c4f6d  
 
@@ -114,7 +114,7 @@ CyclesFinance容器只存储近期交易记录，通过外部可扩展容器持�
 ## 使用(命令行界面)
 
 **Notes**
-- UI交互界面请使用：https://cycles.finance 
+- UI交互界面请使用：http://cycles.finance 
 - ICP在本合约的基本单位是e8s，1 icp = 10^8 e8s;
 - IC网络的Cycles汇率会动态变化，盯住XDR价值，1 XDR = 10^12 cycles (价值约1.4 USD);
 - 本合约的ICP/Cycles汇率由市场自动形成，与其他市场可能存在偏差；
@@ -380,7 +380,7 @@ service : () -> CyclesMarket
 
 ## 关于我们
 
-Web: https://cycles.finance/  
+Web: http://cycles.finance/  
 
 Github: https://github.com/iclighthouse/Cycles.Finance 
 
