@@ -1,6 +1,6 @@
 # Cycles.Finance
 
-**Website**: https://cycles.finance  
+**Website**: http://cycles.finance  
 **Canister Id**: ium3d-eqaaa-aaaak-aab4q-cai   
 **Module hash**(14/12): 19ee5e66085230b35fe86284c7144fe8e95b0fb4f08fc50bcb4d0f5b264c4f6d  
 
@@ -116,7 +116,7 @@ To ensure that CyclesFinance can support large-scale application scenarios, the 
 ## Usage (Command line interface)
 
 **Notes**
-- UI interaction interface: https://cycles.finance 
+- UI interaction interface: http://cycles.finance 
 - The basic unit of ICP in canister is e8s, 1 icp = 10^8 e8s;
 - The ICP/Cycles rate on IC network changes dynamically and is pegged to the XDR value, 1 XDR = 10^12 cycles (value approx. 1.4 USD).
 - The ICP/Cycles rate on this canister is automatically formed by the market and may deviate from other markets.
@@ -382,7 +382,7 @@ Opening up liquidity mining.
 
 ## Community
 
-Web: https://cycles.finance/  
+Web: http://cycles.finance/  
 
 Github: https://github.com/iclighthouse/Cycles.Finance 
 
