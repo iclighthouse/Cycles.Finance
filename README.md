@@ -80,7 +80,7 @@ When the price of an asset starts to trade away from market prices, arbitragers 
 
 CyclesFinance faces atomicity problems mainly with ICP internal transfer failures and Cycles send failures. We use a Best Effort Commit strategy together with an error handling mechanism to ensure ultimate consistency.
 
-- Before updating state variables, an exception is thrown when an error is encountered.
+- Before updating state variables, canister will throw an exception when an error is encountered.
 - It ensures that all internal state variables are successfully saved when some of them have already been updated, and external calls take a Best Effort Commit strategy, but to prevent duplicate transactions, so an error handling mechanism is added.
 - With regard to the error handling mechanism, it requires the administrator or governance contract to trigger a retransaction.  For accounts that are unable to receive Cycles, the manager or governance contract can modify the receiving account.
 
