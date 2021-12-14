@@ -27,6 +27,7 @@ module {
         icp: Ledger.ICP;
         share: Nat;
         shareWeighted: ShareWeighted;
+        cumulShareWeighted: CumulShareWeighted;
         unitValue: (cycles: Float, icpE8s: Float);
         vol: Vol;
         priceWeighted: PriceWeighted;

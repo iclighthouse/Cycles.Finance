@@ -545,6 +545,7 @@ shared(installMsg) actor class CyclesMarket() = this {
                     icp = {e8s = Nat64.fromNat(poolIcp);};
                     share = poolShare;
                     shareWeighted = poolShareWeighted;
+                    cumulShareWeighted = poolShareWeighted.shareTimeWeighted;
                     unitValue = (unitCyclesFloat, unitIcpFloat);
                     vol = totalVol;
                     priceWeighted = priceWeighted;
@@ -560,6 +561,7 @@ shared(installMsg) actor class CyclesMarket() = this {
                     icp = {e8s = Nat64.fromNat(poolIcp * share / poolShare);};
                     share = share;
                     shareWeighted = shareWeighted;
+                    cumulShareWeighted = _getCumulShareWeighted(account);
                     unitValue = (unitCyclesFloat, unitIcpFloat);
                     vol = vol;
                     priceWeighted = priceWeighted;

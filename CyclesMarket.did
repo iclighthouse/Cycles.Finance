@@ -29,6 +29,7 @@ type Liquidity = record {
    priceWeighted: PriceWeighted;
    share: nat;
    shareWeighted: ShareWeighted;
+   cumulShareWeighted: CumulShareWeighted;
    swapCount: nat64;
    unitValue: record { float64; float64; };
    vol: Vol;

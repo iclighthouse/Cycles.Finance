@@ -2,7 +2,7 @@
 
 **Website**: https://cycles.finance  
 **Canister Id**: ium3d-eqaaa-aaaak-aab4q-cai   
-**Module hash**(12/12): 1e7ddc190f82673ac163745577a86d47ffb36ede422467ba6292d547b7f05d69  
+**Module hash**(14/12): 19ee5e66085230b35fe86284c7144fe8e95b0fb4f08fc50bcb4d0f5b264c4f6d  
 
 ### 申明：
 
