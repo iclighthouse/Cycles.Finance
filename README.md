@@ -1,8 +1,14 @@
 # Cycles.Finance
 
 **Website**: http://cycles.finance  
-**Canister Id**: ium3d-eqaaa-aaaak-aab4q-cai   
-**Module hash**(14/12): 19ee5e66085230b35fe86284c7144fe8e95b0fb4f08fc50bcb4d0f5b264c4f6d  
+**Canister Id**: 6nmrm-laaaa-aaaak-aacfq-cai   
+**Module hash**: bc7740d5b33c40f594a3cc0af31950b89e003514c85097a4d30adda0539e1b9a  
+**Version**: 0.5  
+
+**Swap Transaction Record Storage**  
+**Canister Id**: 6ylab-kiaaa-aaaak-aacga-cai   
+**Module hash**: 1f852b023a9a43d2830d279ff52f1999e4c56a1906784b4bfafad882280fdcc4  
+**Version**: 1  
 
 ### Disclaimers.
 
@@ -76,7 +82,7 @@ When the price of an asset starts to trade away from market prices, arbitragers 
 
 ## Technical features
 
-#### Achieving ultimate consistency
+#### Achieving eventually consistency
 
 CyclesFinance faces atomicity problems mainly with ICP internal transfer failures and Cycles send failures. We use a Best Effort Commit strategy together with an error handling mechanism to ensure ultimate consistency.
 
@@ -88,7 +94,7 @@ CyclesFinance faces atomicity problems mainly with ICP internal transfer failure
 
 The idempotency prevents repeated executions when an external canister is submitted repeatedly in the event of an error in the call to CyclesFinance. 
 - The transaction txid is computable and globally unique.
-- The nonce mechanism for accounts is supported (to be supported soon).
+- The nonce mechanism for accounts is supported.
 
 #### Oracle quotes support
 
@@ -108,7 +114,7 @@ The liquidity() method of the CyclesFinance canister is used to query the time-w
 
 CyclesFinance can provide data resources for trading mining. It can query the cumulative value of trading volume on a global or account basis.
 
-#### Scalable storage of transaction records (to be supported soon)
+#### Scalable storage of transaction records
 
 To ensure that CyclesFinance can support large-scale application scenarios, the CyclesFinance canister stores only recent transactions, which are stored persistently via an external scalable canisters.
 
@@ -124,13 +130,13 @@ To ensure that CyclesFinance can support large-scale application scenarios, the 
 
 ### Query ICP/Cycles price
 ````
-dfx canister --network ic call ium3d-eqaaa-aaaak-aab4q-cai liquidity '(null)'
+dfx canister --network ic call 6nmrm-laaaa-aaaak-aacfq-cai liquidity '(null)'
 ````
-The `e8s` (or `5_035_232`) field in the return value is divided by the `cycles` (or `2_190_693_645`) field to indicate how many cycles can be exchanged for 1 e8s. This value is multiplied by 10^8 to indicate how many cycles can be exchanged for 1 icp. this is an estimate.
+The `icpE8s` (or `1_180_746_538`) field in the return value is divided by the `cycles` (or `2_190_693_645`) field to indicate how many cycles can be exchanged for 1 e8s. This value is multiplied by 10^8 to indicate how many cycles can be exchanged for 1 icp. this is an estimate.
 ````
 (
   record {
-    icp = record { e8s = 787_146_478 : nat64 };
+    icpE8s = 48_521_783 : nat;
     vol = record {
       swapIcpVol = 1_740_878 : nat;
       swapCyclesVol = 573_069_740_022 : nat;
@@ -139,8 +145,9 @@ The `e8s` (or `5_035_232`) field in the return value is divided by the `cycles` 
       updateTime = 1_638_592_854 : nat;
       shareTimeWeighted = 3_894_326_391_123 : nat;
     };
+    cumulShareWeighted = 3_894_326_391_123 : nat;
     unitValue = record { 329155.999121 : float64; 0.972376 : float64 };
-    share = 809_508_285 : nat;
+    shares = 809_508_285 : nat;
     cycles = 266_454_525_225_963 : nat;
     priceWeighted = record {
       updateTime = 1_638_592_854 : nat;
@@ -156,7 +163,7 @@ The `e8s` (or `5_035_232`) field in the return value is divided by the `cycles` 
 
 Step1: Get your dedicated ICP deposit account-id (**DepositAccountId**)
 ````
-dfx canister --network ic call ium3d-eqaaa-aaaak-aab4q-cai getAccountId '(principal "<your_icp_account_principal>")'
+dfx canister --network ic call 6nmrm-laaaa-aaaak-aacfq-cai getAccountId '("<your_icp_principal_or_accountid>")'
 ````
 Return `DepositAccountId`(example)
 ````
@@ -170,7 +177,7 @@ dfx ledger --network ic transfer <your_DepositAccountId> --memo 0 --e8s <icp_e8s
 
 Step3: Converting to Cycles. Parameters `icp_e8s_amount` is the amount sent in Step2 and `your_cycles_wallet_principal` is the principal of your cycles wallet (note: not your ICP account principal).
 ````
-dfx canister --network ic call ium3d-eqaaa-aaaak-aab4q-cai icpToCycles '(<icp_e8s_amount>:nat,principal "<your_cycles_wallet_principal>",null)'
+dfx canister --network ic call 6nmrm-laaaa-aaaak-aacfq-cai icpToCycles '(<icp_e8s_amount>:nat, principal "<your_cycles_wallet_principal>", null, null, null)'
 ````
 Check your wallet balance
 ````
@@ -181,7 +188,7 @@ dfx wallet --network ic balance
 
 Step1: Use the didc tool to encode the parameters. Note, didc tool resources: https://github.com/dfinity/candid/tree/master/tools/didc
 ````
-didc encode '(principal "<your_icp_account_principal>",null)' -t '(principal,opt blob)' -f blob
+didc encode '("<your_icp_principal_or_accountid>",null,null)' -t '(text,opt nat,opt blob)' -f blob
 ````
 Return `CallArgs`(example)
 ````
@@ -190,7 +197,7 @@ blob "DIDL\02n\01m{\02h\00\01\**************\88\01\e1\18\fd6G\02\00"
 
 Step2: Converting to ICP. The parameter `cycles_amount` is the amount of cycles you want to convert, and the parameter `call_args` is the `CallArgs` got from Step1. 
 ````
-dfx canister --network ic call <your_cycles_wallet_principal> wallet_call '(record {canister=principal "ium3d-eqaaa-aaaak-aab4q-cai"; method_name="cyclesToIcp"; cycles=<cycles_amount>:nat64; args=<call_args>})'
+dfx canister --network ic call <your_cycles_wallet_principal> wallet_call '(record {canister=principal "6nmrm-laaaa-aaaak-aacfq-cai"; method_name="cyclesToIcp"; cycles=<cycles_amount>:nat64; args=<call_args>})'
 ````
 Check your account balance
 ````
@@ -203,7 +210,7 @@ To add liquidity, both ICP and Cycles to be added to the liquidity pool, the pro
 
 Step1: Get your dedicated ICP deposit account-id（**DepositAccountId**）
 ````
-dfx canister --network ic call ium3d-eqaaa-aaaak-aab4q-cai getAccountId '(principal "<your_icp_account_principal>")'
+dfx canister --network ic call 6nmrm-laaaa-aaaak-aacfq-cai getAccountId '("<your_icp_principal_or_accountid>")'
 ````
 Return (example)
 ````
@@ -217,7 +224,7 @@ dfx ledger --network ic transfer <your_DepositAccountId> --memo 0 --e8s <icp_e8s
 
 Step3: Use the didc tool to encode the parameters. Note, didc tool resources: https://github.com/dfinity/candid/tree/master/tools/didc
 ````
-didc encode '(principal "<your_icp_account_principal>",null)' -t '(principal,opt blob)' -f blob
+didc encode '("<your_icp_principal_or_accountid>",null,null)' -t '(text,opt nat,opt blob)' -f blob
 ````
 Return `CallArgs`(example)
 ````
@@ -226,18 +233,18 @@ blob "DIDL\02n\01m{\02h\00\01\**************\88\01\e1\18\fd6G\02\00"
 
 Step4: Send Cycles, add liquidity. The parameter `cycles_amount` is the amount of cycles you want to add, and the parameter `call_args` is the `CallArgs` got from Step3.
 ````
-dfx canister --network ic call <your_cycles_wallet_principal> wallet_call '(record {canister=principal "ium3d-eqaaa-aaaak-aab4q-cai"; method_name="add"; cycles=<cycles_amount>:nat64; args=<call_args>})'
+dfx canister --network ic call <your_cycles_wallet_principal> wallet_call '(record {canister=principal "6nmrm-laaaa-aaaak-aacfq-cai"; method_name="add"; cycles=<cycles_amount>:nat64; args=<call_args>})'
 ````
 
 Step5: Enquire about liquidity shares
 ````
-dfx canister --network ic call ium3d-eqaaa-aaaak-aab4q-cai liquidity '(opt principal "<your_icp_account_principal>")'
+dfx canister --network ic call 6nmrm-laaaa-aaaak-aacfq-cai liquidity '(opt "<your_icp_principal_or_accountid>")'
 ````
-Return (example). The `share` (or `2_082_268_383`) field is the share of liquidity you hold.
+Return (example). The `shares` (or `489_381_556`) field is the share of liquidity you hold.
 ````
 (
   record {
-    icp = record { e8s = 48_521_783 : nat64 };
+    icpE8s = 48_521_783 : nat;
     vol = record {
       swapIcpVol = 1_648_218 : nat;
       swapCyclesVol = 541_650_948_359 : nat;
@@ -246,8 +253,9 @@ Return (example). The `share` (or `2_082_268_383`) field is the share of liquidi
       updateTime = 1_638_528_867 : nat;
       shareTimeWeighted = 695_045_889_662 : nat;
     };
+    cumulShareWeighted = 3_894_326_391_123 : nat;
     unitValue = record { 329748.544469 : float64; 0.970629 : float64 };
-    share = 49_990_000 : nat;   
+    shares = 49_990_000 : nat;   
     cycles = 16_484_143_085_896 : nat;
     priceWeighted = record {
       updateTime = 1_638_528_867 : nat;
@@ -261,16 +269,16 @@ Return (example). The `share` (or `2_082_268_383`) field is the share of liquidi
 
 ### Remove liquidity
 
-Step1: Query your liquidity share, the `share` (or `2_082_268_383`) field in the return is your share held.
+Step1: Query your liquidity share, the `shares` (or `489_381_556`) field in the return is your share held.
 
 ````
-dfx canister --network ic call ium3d-eqaaa-aaaak-aab4q-cai liquidity '(opt principal "<your_icp_account_principal>")'
+dfx canister --network ic call 6nmrm-laaaa-aaaak-aacfq-cai liquidity '(opt "<your_icp_principal_or_accountid>")'
 ````
 
 Step2: Remove liquidity. The parameter `share_amount` must be equal to or less than the value queried by Step1, and the parameter `your_cycles_wallet_principal` is wallet principal used to receive the cycles, and caller  principal will receive icp.
 
 ````
-dfx canister --network ic call ium3d-eqaaa-aaaak-aab4q-cai remove '(<share_amount>:nat, principal "<your_cycles_wallet_principal>", null)'
+dfx canister --network ic call 6nmrm-laaaa-aaaak-aacfq-cai remove '(opt <share_amount>:opt nat, principal "<your_cycles_wallet_principal>", null, null, null)'
 ````
 Check your account balance
 ````
@@ -282,7 +290,7 @@ dfx wallet --network ic balance
 
 Claim Rewards. The parameter `your_cycles_wallet_principal` is wallet principal used to receive cycles, and caller principal will receive icp.
 ````
-dfx canister --network ic call ium3d-eqaaa-aaaak-aab4q-cai claim '(principal "<your_cycles_wallet_principal>", null)'
+dfx canister --network ic call 6nmrm-laaaa-aaaak-aacfq-cai claim '(principal "<your_cycles_wallet_principal>", null, null, null)'
 ````
 Check your account balance
 ````
@@ -293,54 +301,160 @@ dfx wallet --network ic balance
 ## DID
 
 ````
-type Vol = record {swapCyclesVol: nat; swapIcpVol: nat; };
-type TxnResult = record { cycles: TokenValue; icpE8s: TokenValue; share: ShareChange; txid: Txid; };
-type TxnRecord = record {
-   account: principal;
-   cyclesWallet: opt principal;
-   data: opt blob;
-   fee: record { token0Fee: nat; token1Fee: nat; };
+type definite_canister_settings = 
+ record {
+   compute_allocation: nat;
+   controllers: vec principal;
+   freezing_threshold: nat;
+   memory_allocation: nat;
+ };
+type canister_status = 
+ record {
+   cycles: nat;
+   memory_size: nat;
+   module_hash: opt vec nat8;
+   settings: definite_canister_settings;
+   status: variant {
+             running;
+             stopped;
+             stopping;
+           };
+ };
+type Vol = 
+ record {
+   swapCyclesVol: CyclesAmount;
+   swapIcpVol: IcpE8s;
+ };
+type TxnResult = 
+ variant {
+   err:
+    record {
+      code:
+       variant {
+         IcpTransferException;
+         InsufficientShares;
+         NonceError;
+         PoolIsEmpty;
+         UnacceptableVolatility;
+         InvalidCyclesAmout;
+         InvalidIcpAmout;
+         UndefinedError;
+       };
+      message: text;
+    };
+   ok:
+    record {
+      cycles: BalanceChange;
+      icpE8s: BalanceChange;
+      shares: ShareChange;
+      txid: Txid;
+    };
+ };
+type TxnRecord = 
+ record {
+   account: AccountId;
+   caller: AccountId;
+   cyclesWallet: opt CyclesWallet;
+   data: opt Data;
+   fee: record {
+          token0Fee: nat;
+          token1Fee: nat;
+        };
+   index: nat;
+   msgCaller: opt principal;
+   nonce: Nonce;
    operation: OperationType;
-   share: ShareChange;
+   shares: ShareChange;
    time: Time;
    token0: TokenType;
-   token0Value: TokenValue;
+   token0Value: BalanceChange;
    token1: TokenType;
-   token1Value: TokenValue;
+   token1Value: BalanceChange;
    txid: Txid;
-};
+ };
 type Txid = blob;
-type TokenValue = variant { In: nat; NoChange; Out: nat; };
-type TokenType = variant { Cycles; DRC20: principal; Icp; };
+type TransferError = 
+ variant {
+   BadFee: record {expected_fee: ICP;};
+   InsufficientFunds: record {balance: ICP;};
+   TxCreatedInFuture;
+   TxDuplicate: record {duplicate_of: BlockIndex;};
+   TxTooOld: record {allowed_window_nanos: nat64;};
+ };
+type TokenType = 
+ variant {
+   Cycles;
+   Icp;
+   Token: principal;
+ };
 type Timestamp = nat;
 type Time = int;
-type ShareWeighted = record { shareTimeWeighted: nat; updateTime: Timestamp; };
-type ShareChange = variant { Burn: nat; Mint: nat; NoChange;};
-type PriceWeighted = record { cyclesTimeWeighted: nat;icpTimeWeighted: nat; updateTime: Timestamp;};
-type OperationType = variant { AddLiquidity; Claim; RemoveLiquidity; Swap;};
-type Liquidity = record {
+type Shares = nat;
+type ShareWeighted = 
+ record {
+   shareTimeWeighted: nat;
+   updateTime: Timestamp;
+ };
+type ShareChange = 
+ variant {
+   Burn: Shares;
+   Mint: Shares;
+   NoChange;
+ };
+type Sa = vec nat8;
+type PriceWeighted = 
+ record {
+   cyclesTimeWeighted: nat;
+   icpTimeWeighted: nat;
+   updateTime: Timestamp;
+ };
+type OperationType = 
+ variant {
+   AddLiquidity;
+   Claim;
+   RemoveLiquidity;
+   Swap;
+ };
+type Nonce = nat;
+type Liquidity = 
+ record {
+   cumulShareWeighted: CumulShareWeighted;
    cycles: nat;
-   icp: ICP;
+   icpE8s: IcpE8s;
    priceWeighted: PriceWeighted;
-   share: nat;
    shareWeighted: ShareWeighted;
+   shares: Shares;
    swapCount: nat64;
-   unitValue: record { float64; float64; };
+   unitValue: record {
+                float64;
+                float64;
+              };
    vol: Vol;
-};
+ };
+type IcpE8s = nat;
 type ICP = record {e8s: nat64;};
-type FeeStatus = record {
+type FeeStatus = 
+ record {
+   cumulFee: record {
+               cyclesBalance: CyclesAmount;
+               icpBalance: IcpE8s;
+             };
    fee: float64;
-   cumulFee: record { cyclesBalance: nat; icpBalance: nat; };
-   totalFee: record { cyclesBalance: nat; icpBalance: nat; };
-   myAllocable: opt record { cyclesBalance: nat; icpBalance: nat; };
-};
-type ErrorLog = record {
-   time: Timestamp;
-   user: principal;
-   withdraw: record { principal; nat; principal; nat; };
-};
-type Config = record {
+   myPortion: opt record {
+                    cyclesBalance: CyclesAmount;
+                    icpBalance: IcpE8s;
+                  };
+   totalFee: record {
+               cyclesBalance: CyclesAmount;
+               icpBalance: IcpE8s;
+             };
+ };
+type Data = blob;
+type CyclesWallet = principal;
+type CyclesAmount = nat;
+type CumulShareWeighted = nat;
+type Config = 
+ record {
    CYCLES_LIMIT: opt nat;
    FEE: opt nat;
    ICP_FEE: opt nat64;
@@ -351,21 +465,32 @@ type Config = record {
    MIN_CYCLES: opt nat;
    MIN_ICP_E8S: opt nat;
    STORAGE_CANISTER: opt text;
-};
+ };
+type BlockIndex = nat64;
+type BalanceChange = 
+ variant {
+   CreditRecrod: nat;
+   DebitRecord: nat;
+   NoChange;
+ };
+type Address = text;
+type AccountId = blob;
 type CyclesMarket = service {
-   getAccountId: (_account: principal) -> (text) query;
-   cyclesToIcp: (_account: principal, _data: opt blob) -> (TxnResult);
-   icpToCycles: (_icpE8s: nat, _cyclesWallet: principal, _data: opt blob) -> (TxnResult);
-   add: (_account: principal, _data: opt blob) -> (TxnResult);
-   remove: (_share: opt nat, _cyclesWallet: principal, _data: opt blob) -> (TxnResult);
-   claim: (_cyclesWallet: principal, _data: opt blob) -> (TxnResult);
-   count: (_account: opt principal) -> (nat) query;
-   liquidity: (_account: opt principal) -> (Liquidity) query;
-   feeStatus: (_account: opt principal) -> (FeeStatus) query;
-   lastTxids: (_account: opt principal) -> (vec Txid) query;
-   getEvents: (_account: opt principal) -> (vec TxnRecord) query;
-   txnRecord: (_txid: Txid) -> (opt TxnRecord) query;
+   getAccountId: (Address) -> (text) query;
+   add: (Address, opt Nonce, opt Data) -> (TxnResult);
+   remove: (opt Shares, CyclesWallet, opt Nonce, opt Sa, opt Data) -> (TxnResult);
+   cyclesToIcp: (Address, opt Nonce, opt Data) -> (TxnResult);
+   icpToCycles: (IcpE8s, CyclesWallet, opt Nonce, opt Sa, opt Data) -> (TxnResult);
+   claim: (CyclesWallet, opt Nonce, opt Sa, opt Data) -> (TxnResult);
+   count: (opt Address) -> (nat) query;
+   canister_status: () -> (canister_status);
+   feeStatus: (opt Address) -> (FeeStatus) query;
    getConfig: () -> (Config) query;
+   getEvents: (opt Address) -> (vec TxnRecord) query;
+   lastTxids: (opt Address) -> (vec Txid) query;
+   liquidity: (opt Address) -> (Liquidity) query;
+   txnRecord: (Txid) -> (opt TxnRecord) query;
+   version: () -> (text) query;
 };
 service : () -> CyclesMarket
 ````
@@ -373,9 +498,9 @@ service : () -> CyclesMarket
 
 ## Roadmap
 
-(doing) Development of UI interface, open source contract code.
+Development of UI interface, open source contract code.
 
-Upgrade to v1.0.
+(doing) Upgrade to v1.0.
 
 Opening up liquidity mining.
 

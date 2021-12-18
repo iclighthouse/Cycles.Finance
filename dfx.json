@@ -3,6 +3,10 @@
     "CyclesMarket": {
       "main": "./CyclesMarket.mo",
       "type": "motoko"
+    },
+    "DRC205": {
+      "main": "./DRC205Proxy.mo",
+      "type": "motoko"
     }
   },
   "defaults": {

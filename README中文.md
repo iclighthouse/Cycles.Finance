@@ -1,8 +1,14 @@
 # Cycles.Finance
 
 **Website**: http://cycles.finance  
-**Canister Id**: ium3d-eqaaa-aaaak-aab4q-cai   
-**Module hash**(14/12): 19ee5e66085230b35fe86284c7144fe8e95b0fb4f08fc50bcb4d0f5b264c4f6d  
+**Canister Id**: 6nmrm-laaaa-aaaak-aacfq-cai   
+**Module hash**: bc7740d5b33c40f594a3cc0af31950b89e003514c85097a4d30adda0539e1b9a  
+**Version**: 0.5  
+
+**Swap Transaction Record Storage**  
+**Canister Id**: 6ylab-kiaaa-aaaak-aacga-cai   
+**Module hash**: 1f852b023a9a43d2830d279ff52f1999e4c56a1906784b4bfafad882280fdcc4  
+**Version**: 1  
 
 ### 申明：
 
@@ -87,7 +93,7 @@ CyclesFinance面临的原子性问题主要有ICP内部转账和Cycles发送在�
 
 外部应用调用CyclesFinance遇到错误时，如果需要重复发送交易，可以避免重复交易的情况发生。
 - 交易txid是可计算的，并全局唯一。
-- 支持账户的nonce机制（即将支持）。
+- 支持账户的nonce机制。
 
 #### Oracle报价支持
 
@@ -105,7 +111,7 @@ CyclesFinance可以为流动性挖矿合约提供数据依据，为社区治理�
 
 CyclesFinance可以为交易挖矿提供数据依据，为社区治理和项目经济模型提供创新空间。通过CyclesFinance容器的liquidity(<null or account>)方法查询，返回值中vol值表示全局或账户的交易量累计值。
 
-#### 交易记录可扩展性存储（即将支持）
+#### 可扩展性存储
 
 CyclesFinance容器只存储近期交易记录，通过外部可扩展容器持久化存储交易记录，确保CyclesFinance能支撑大规模应用场景。
 
@@ -122,13 +128,13 @@ CyclesFinance容器只存储近期交易记录，通过外部可扩展容器持�
 
 ### 查询ICP/Cycles兑换比例
 ````
-dfx canister --network ic call ium3d-eqaaa-aaaak-aab4q-cai liquidity '(null)'
+dfx canister --network ic call 6nmrm-laaaa-aaaak-aacfq-cai liquidity '(null)'
 ````
-返回值中的`e8s`(或`5_035_232`)字段 除以 `cycles`(或`2_190_693_645`)字段，就表示当前1个e8s可以兑换多少个cycles，乘以10^8就表示1个icp可以兑换多少个cycles，这是个估算值。
+返回值中的`icpE8s`(或`1_180_746_538`)字段 除以 `cycles`(或`2_190_693_645`)字段，就表示当前1个e8s可以兑换多少个cycles，乘以10^8就表示1个icp可以兑换多少个cycles，这是个估算值。
 ````
 (
   record {
-    icp = record { e8s = 787_146_478 : nat64 };
+    icpE8s = 48_521_783 : nat;
     vol = record {
       swapIcpVol = 1_740_878 : nat;
       swapCyclesVol = 573_069_740_022 : nat;
@@ -137,8 +143,9 @@ dfx canister --network ic call ium3d-eqaaa-aaaak-aab4q-cai liquidity '(null)'
       updateTime = 1_638_592_854 : nat;
       shareTimeWeighted = 3_894_326_391_123 : nat;
     };
+    cumulShareWeighted = 3_894_326_391_123 : nat;
     unitValue = record { 329155.999121 : float64; 0.972376 : float64 };
-    share = 809_508_285 : nat;
+    shares = 809_508_285 : nat;
     cycles = 266_454_525_225_963 : nat;
     priceWeighted = record {
       updateTime = 1_638_592_854 : nat;
@@ -154,7 +161,7 @@ dfx canister --network ic call ium3d-eqaaa-aaaak-aab4q-cai liquidity '(null)'
 
 Step1: 获取你专用的ICP充值地址（称之为**DepositAccountId**）
 ````
-dfx canister --network ic call ium3d-eqaaa-aaaak-aab4q-cai getAccountId '(principal "<your_icp_account_principal>")'
+dfx canister --network ic call 6nmrm-laaaa-aaaak-aacfq-cai getAccountId '("<your_icp_principal_or_accountid>")'
 ````
 返回`DepositAccountId`(示例)
 ````
@@ -168,7 +175,7 @@ dfx ledger --network ic transfer <your_DepositAccountId> --memo 0 --e8s <icp_e8s
 
 Step3: 提取Cycles，参数`icp_e8s_amount`输入在Step2中发送的数量，`your_cycles_wallet_principal`输入你的cycles钱包的Principal（注意：不是你的ICP账户）。
 ````
-dfx canister --network ic call ium3d-eqaaa-aaaak-aab4q-cai icpToCycles '(<icp_e8s_amount>:nat,principal "<your_cycles_wallet_principal>",null)'
+dfx canister --network ic call 6nmrm-laaaa-aaaak-aacfq-cai icpToCycles '(<icp_e8s_amount>:nat, principal "<your_cycles_wallet_principal>", null, null, null)'
 ````
 查看你账户的余额变化
 ````
@@ -179,7 +186,7 @@ dfx wallet --network ic balance
 
 Step1: 使用didc工具编码参数。注：didc工具地址：https://github.com/dfinity/candid/tree/master/tools/didc
 ````
-didc encode '(principal "<your_icp_account_principal>",null)' -t '(principal,opt blob)' -f blob
+didc encode '("<your_icp_principal_or_accountid>",null,null)' -t '(text,opt nat,opt blob)' -f blob
 ````
 返回`CallArgs`（示例）
 ````
@@ -188,7 +195,7 @@ blob "DIDL\02n\01m{\02h\00\01\**************\88\01\e1\18\fd6G\02\00"
 
 Step2: 兑换成ICP。参数`cycles_amount`输入你想用于兑换的cycles数量，参数`call_args`输入Step1得到的`CallArgs`
 ````
-dfx canister --network ic call <your_cycles_wallet_principal> wallet_call '(record {canister=principal "ium3d-eqaaa-aaaak-aab4q-cai"; method_name="cyclesToIcp"; cycles=<cycles_amount>:nat64; args=<call_args>})'
+dfx canister --network ic call <your_cycles_wallet_principal> wallet_call '(record {canister=principal "6nmrm-laaaa-aaaak-aacfq-cai"; method_name="cyclesToIcp"; cycles=<cycles_amount>:nat64; args=<call_args>})'
 ````
 查看你账户的余额变化
 ````
@@ -201,7 +208,7 @@ dfx ledger --network ic balance
 
 Step1: 获取你专用的ICP充值地址（称之为**DepositAccountId**）
 ````
-dfx canister --network ic call ium3d-eqaaa-aaaak-aab4q-cai getAccountId '(principal "<your_icp_account_principal>")'
+dfx canister --network ic call 6nmrm-laaaa-aaaak-aacfq-cai getAccountId '("<your_icp_principal_or_accountid>")'
 ````
 返回(示例)
 ````
@@ -215,7 +222,7 @@ dfx ledger --network ic transfer <your_DepositAccountId> --memo 0 --e8s <icp_e8s
 
 Step3: 使用didc工具编码参数。注：didc工具地址：https://github.com/dfinity/candid/tree/master/tools/didc
 ````
-didc encode '(principal "<your_icp_account_principal>",null)' -t '(principal,opt blob)' -f blob
+didc encode '("<your_icp_principal_or_accountid>",null,null)' -t '(text,opt nat,opt blob)' -f blob
 ````
 返回`CallArgs`（示例）
 ````
@@ -224,18 +231,18 @@ blob "DIDL\02n\01m{\02h\00\01\**************\88\01\e1\18\fd6G\02\00"
 
 Step4: 发送Cycles，添加流动性。需要指定发送的Cycles数量，并填入Step3得到的`CallArgs`
 ````
-dfx canister --network ic call <your_cycles_wallet_principal> wallet_call '(record {canister=principal "ium3d-eqaaa-aaaak-aab4q-cai"; method_name="add"; cycles=<cycles_amount>:nat64; args=<call_args>})'
+dfx canister --network ic call <your_cycles_wallet_principal> wallet_call '(record {canister=principal "6nmrm-laaaa-aaaak-aacfq-cai"; method_name="add"; cycles=<cycles_amount>:nat64; args=<call_args>})'
 ````
 
 Step5: 查询持有流动性份额
 ````
-dfx canister --network ic call ium3d-eqaaa-aaaak-aab4q-cai liquidity '(opt principal "<your_icp_account_principal>")'
+dfx canister --network ic call 6nmrm-laaaa-aaaak-aacfq-cai liquidity '(opt "<your_icp_principal_or_accountid>")'
 ````
 返回（示例）
 ````
 (
   record {
-    icp = record { e8s = 48_521_783 : nat64 };
+    icpE8s = 48_521_783 : nat;
     vol = record {
       swapIcpVol = 1_648_218 : nat;
       swapCyclesVol = 541_650_948_359 : nat;
@@ -244,8 +251,9 @@ dfx canister --network ic call ium3d-eqaaa-aaaak-aab4q-cai liquidity '(opt princ
       updateTime = 1_638_528_867 : nat;
       shareTimeWeighted = 695_045_889_662 : nat;
     };
+    cumulShareWeighted = 3_894_326_391_123 : nat;
     unitValue = record { 329748.544469 : float64; 0.970629 : float64 };
-    share = 49_990_000 : nat;   //注：`share`(或`2_082_268_383`)表示你的流动性份额.
+    shares = 49_990_000 : nat;   
     cycles = 16_484_143_085_896 : nat;
     priceWeighted = record {
       updateTime = 1_638_528_867 : nat;
@@ -259,16 +267,16 @@ dfx canister --network ic call ium3d-eqaaa-aaaak-aab4q-cai liquidity '(opt princ
 
 ### 提取流动性（remove）
 
-Step1: 查询自己的流动性份额，返回值中的`share`(或`2_082_268_383`)字段为当前所占份额。
+Step1: 查询自己的流动性份额，返回值中的`shares`(或`489_381_556`)字段为当前所占份额。
 
 ````
-dfx canister --network ic call ium3d-eqaaa-aaaak-aab4q-cai liquidity '(opt principal "<your_icp_account_principal>")'
+dfx canister --network ic call 6nmrm-laaaa-aaaak-aacfq-cai liquidity '(opt "<your_icp_principal_or_accountid>")'
 ````
 
 Step2: 提取流动性. 参数`share_amount`必须是等于或小于Step1查询到的数值, 参数`your_cycles_wallet_principal`用于接收cycles。
 
 ````
-dfx canister --network ic call ium3d-eqaaa-aaaak-aab4q-cai remove '(<share_amount>:nat, principal "<your_cycles_wallet_principal>", null)'
+dfx canister --network ic call 6nmrm-laaaa-aaaak-aacfq-cai remove '(opt <share_amount>:opt nat, principal "<your_cycles_wallet_principal>", null, null, null)'
 ````
 查看你账户的余额变化
 ````
@@ -280,7 +288,7 @@ dfx wallet --network ic balance
 
 提取收益。需指定`your_cycles_wallet_principal`
 ````
-dfx canister --network ic call ium3d-eqaaa-aaaak-aab4q-cai claim '(principal "<your_cycles_wallet_principal>", null)'
+dfx canister --network ic call 6nmrm-laaaa-aaaak-aacfq-cai claim '(principal "<your_cycles_wallet_principal>", null, null, null)'
 ````
 查看你账户的余额变化
 ````
@@ -291,54 +299,160 @@ dfx wallet --network ic balance
 ## did文件
 
 ````
-type Vol = record {swapCyclesVol: nat; swapIcpVol: nat; };
-type TxnResult = record { cycles: TokenValue; icpE8s: TokenValue; share: ShareChange; txid: Txid; };
-type TxnRecord = record {
-   account: principal;
-   cyclesWallet: opt principal;
-   data: opt blob;
-   fee: record { token0Fee: nat; token1Fee: nat; };
+type definite_canister_settings = 
+ record {
+   compute_allocation: nat;
+   controllers: vec principal;
+   freezing_threshold: nat;
+   memory_allocation: nat;
+ };
+type canister_status = 
+ record {
+   cycles: nat;
+   memory_size: nat;
+   module_hash: opt vec nat8;
+   settings: definite_canister_settings;
+   status: variant {
+             running;
+             stopped;
+             stopping;
+           };
+ };
+type Vol = 
+ record {
+   swapCyclesVol: CyclesAmount;
+   swapIcpVol: IcpE8s;
+ };
+type TxnResult = 
+ variant {
+   err:
+    record {
+      code:
+       variant {
+         IcpTransferException;
+         InsufficientShares;
+         NonceError;
+         PoolIsEmpty;
+         UnacceptableVolatility;
+         InvalidCyclesAmout;
+         InvalidIcpAmout;
+         UndefinedError;
+       };
+      message: text;
+    };
+   ok:
+    record {
+      cycles: BalanceChange;
+      icpE8s: BalanceChange;
+      shares: ShareChange;
+      txid: Txid;
+    };
+ };
+type TxnRecord = 
+ record {
+   account: AccountId;
+   caller: AccountId;
+   cyclesWallet: opt CyclesWallet;
+   data: opt Data;
+   fee: record {
+          token0Fee: nat;
+          token1Fee: nat;
+        };
+   index: nat;
+   msgCaller: opt principal;
+   nonce: Nonce;
    operation: OperationType;
-   share: ShareChange;
+   shares: ShareChange;
    time: Time;
    token0: TokenType;
-   token0Value: TokenValue;
+   token0Value: BalanceChange;
    token1: TokenType;
-   token1Value: TokenValue;
+   token1Value: BalanceChange;
    txid: Txid;
-};
+ };
 type Txid = blob;
-type TokenValue = variant { In: nat; NoChange; Out: nat; };
-type TokenType = variant { Cycles; DRC20: principal; Icp; };
+type TransferError = 
+ variant {
+   BadFee: record {expected_fee: ICP;};
+   InsufficientFunds: record {balance: ICP;};
+   TxCreatedInFuture;
+   TxDuplicate: record {duplicate_of: BlockIndex;};
+   TxTooOld: record {allowed_window_nanos: nat64;};
+ };
+type TokenType = 
+ variant {
+   Cycles;
+   Icp;
+   Token: principal;
+ };
 type Timestamp = nat;
 type Time = int;
-type ShareWeighted = record { shareTimeWeighted: nat; updateTime: Timestamp; };
-type ShareChange = variant { Burn: nat; Mint: nat; NoChange;};
-type PriceWeighted = record { cyclesTimeWeighted: nat;icpTimeWeighted: nat; updateTime: Timestamp;};
-type OperationType = variant { AddLiquidity; Claim; RemoveLiquidity; Swap;};
-type Liquidity = record {
+type Shares = nat;
+type ShareWeighted = 
+ record {
+   shareTimeWeighted: nat;
+   updateTime: Timestamp;
+ };
+type ShareChange = 
+ variant {
+   Burn: Shares;
+   Mint: Shares;
+   NoChange;
+ };
+type Sa = vec nat8;
+type PriceWeighted = 
+ record {
+   cyclesTimeWeighted: nat;
+   icpTimeWeighted: nat;
+   updateTime: Timestamp;
+ };
+type OperationType = 
+ variant {
+   AddLiquidity;
+   Claim;
+   RemoveLiquidity;
+   Swap;
+ };
+type Nonce = nat;
+type Liquidity = 
+ record {
+   cumulShareWeighted: CumulShareWeighted;
    cycles: nat;
-   icp: ICP;
+   icpE8s: IcpE8s;
    priceWeighted: PriceWeighted;
-   share: nat;
    shareWeighted: ShareWeighted;
+   shares: Shares;
    swapCount: nat64;
-   unitValue: record { float64; float64; };
+   unitValue: record {
+                float64;
+                float64;
+              };
    vol: Vol;
-};
+ };
+type IcpE8s = nat;
 type ICP = record {e8s: nat64;};
-type FeeStatus = record {
+type FeeStatus = 
+ record {
+   cumulFee: record {
+               cyclesBalance: CyclesAmount;
+               icpBalance: IcpE8s;
+             };
    fee: float64;
-   cumulFee: record { cyclesBalance: nat; icpBalance: nat; };
-   totalFee: record { cyclesBalance: nat; icpBalance: nat; };
-   myAllocable: opt record { cyclesBalance: nat; icpBalance: nat; };
-};
-type ErrorLog = record {
-   time: Timestamp;
-   user: principal;
-   withdraw: record { principal; nat; principal; nat; };
-};
-type Config = record {
+   myPortion: opt record {
+                    cyclesBalance: CyclesAmount;
+                    icpBalance: IcpE8s;
+                  };
+   totalFee: record {
+               cyclesBalance: CyclesAmount;
+               icpBalance: IcpE8s;
+             };
+ };
+type Data = blob;
+type CyclesWallet = principal;
+type CyclesAmount = nat;
+type CumulShareWeighted = nat;
+type Config = 
+ record {
    CYCLES_LIMIT: opt nat;
    FEE: opt nat;
    ICP_FEE: opt nat64;
@@ -349,21 +463,32 @@ type Config = record {
    MIN_CYCLES: opt nat;
    MIN_ICP_E8S: opt nat;
    STORAGE_CANISTER: opt text;
-};
+ };
+type BlockIndex = nat64;
+type BalanceChange = 
+ variant {
+   CreditRecrod: nat;
+   DebitRecord: nat;
+   NoChange;
+ };
+type Address = text;
+type AccountId = blob;
 type CyclesMarket = service {
-   getAccountId: (_account: principal) -> (text) query;
-   cyclesToIcp: (_account: principal, _data: opt blob) -> (TxnResult);
-   icpToCycles: (_icpE8s: nat, _cyclesWallet: principal, _data: opt blob) -> (TxnResult);
-   add: (_account: principal, _data: opt blob) -> (TxnResult);
-   remove: (_share: opt nat, _cyclesWallet: principal, _data: opt blob) -> (TxnResult);
-   claim: (_cyclesWallet: principal, _data: opt blob) -> (TxnResult);
-   count: (_account: opt principal) -> (nat) query;
-   liquidity: (_account: opt principal) -> (Liquidity) query;
-   feeStatus: (_account: opt principal) -> (FeeStatus) query;
-   lastTxids: (_account: opt principal) -> (vec Txid) query;
-   getEvents: (_account: opt principal) -> (vec TxnRecord) query;
-   txnRecord: (_txid: Txid) -> (opt TxnRecord) query;
+   getAccountId: (Address) -> (text) query;
+   add: (Address, opt Nonce, opt Data) -> (TxnResult);
+   remove: (opt Shares, CyclesWallet, opt Nonce, opt Sa, opt Data) -> (TxnResult);
+   cyclesToIcp: (Address, opt Nonce, opt Data) -> (TxnResult);
+   icpToCycles: (IcpE8s, CyclesWallet, opt Nonce, opt Sa, opt Data) -> (TxnResult);
+   claim: (CyclesWallet, opt Nonce, opt Sa, opt Data) -> (TxnResult);
+   count: (opt Address) -> (nat) query;
+   canister_status: () -> (canister_status);
+   feeStatus: (opt Address) -> (FeeStatus) query;
    getConfig: () -> (Config) query;
+   getEvents: (opt Address) -> (vec TxnRecord) query;
+   lastTxids: (opt Address) -> (vec Txid) query;
+   liquidity: (opt Address) -> (Liquidity) query;
+   txnRecord: (Txid) -> (opt TxnRecord) query;
+   version: () -> (text) query;
 };
 service : () -> CyclesMarket
 ````
@@ -371,9 +496,9 @@ service : () -> CyclesMarket
 
 ## 路线图
 
-(doing) 开发UI界面，开源合约代码；
+开发UI界面，开源合约代码；
 
-升级至V1.0版本，功能完善；
+(doing) 升级至V1.0版本，功能完善；
 
 推出ICL代币，开启流动性挖矿。
 
