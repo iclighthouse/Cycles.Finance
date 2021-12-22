@@ -32,7 +32,7 @@ import SHA224 "./lib/SHA224";
 import Trie "mo:base/Trie";
 import Error "mo:base/Error";
 import T "./lib/Types";
-import Monitee "./lib/Monitee";
+import DRC207 "./lib/DRC207";
 import DRC205 "./lib/DRC205";
 
 shared(installMsg) actor class CyclesMarket() = this {
@@ -191,6 +191,7 @@ shared(installMsg) actor class CyclesMarket() = this {
         var amount = Nat64.fromNat(_value);
         amount := if (amount > ICP_FEE){ amount - ICP_FEE } else { 0 };
         var res: Ledger.TransferResult = #Err(#TxCreatedInFuture);
+        let _itIndex = itIndex;
         try{
             res := await ledger.transfer({
                 to = _to;
@@ -202,14 +203,14 @@ shared(installMsg) actor class CyclesMarket() = this {
             });
             switch(res){
                 case(#Err(e)){ 
-                    _putIcpTransferLog(itIndex, _getMainAccount(), _to, _value, #Failure);
+                    _putIcpTransferLog(_itIndex, _getMainAccount(), _to, Nat64.toNat(amount), #Failure);
                 };
                 case(_){ //
-                    _putIcpTransferLog(itIndex, _getMainAccount(), _to, _value, #Success);
+                    _putIcpTransferLog(_itIndex, _getMainAccount(), _to, Nat64.toNat(amount), #Success);
                 };
             };
         }catch(e){
-            _putIcpTransferLog(itIndex, _getMainAccount(), _to, _value, #Processing);
+            _putIcpTransferLog(_itIndex, _getMainAccount(), _to, Nat64.toNat(amount), #Processing);
         };
         return res;
     };
@@ -218,6 +219,7 @@ shared(installMsg) actor class CyclesMarket() = this {
         let to = _getMainAccount();
         amount := if (amount > ICP_FEE){ amount - ICP_FEE } else { 0 };
         var res: Ledger.TransferResult = #Err(#TxCreatedInFuture);
+        let _itIndex = itIndex;
         try{
             res := await ledger.transfer({
                 to = to;
@@ -229,7 +231,7 @@ shared(installMsg) actor class CyclesMarket() = this {
             });
             switch(res){
                 case(#Err(e)){ 
-                    _putIcpTransferLog(itIndex, _fromSa, to, _value, #Failure);
+                    _putIcpTransferLog(_itIndex, _fromSa, to, Nat64.toNat(amount), #Failure);
                     errors := Trie.put(errors, keyn(errorIndex), Nat.equal, #IcpSaToMain({
                         user = _fromSa;
                         debit = (itIndex, _fromSa, _value);
@@ -239,11 +241,11 @@ shared(installMsg) actor class CyclesMarket() = this {
                     errorIndex += 1;
                 };
                 case(_){ //
-                    _putIcpTransferLog(itIndex, _fromSa, to, _value, #Success);
+                    _putIcpTransferLog(_itIndex, _fromSa, to, Nat64.toNat(amount), #Success);
                 };
             };
         }catch(e){
-            _putIcpTransferLog(itIndex, _fromSa, to, _value, #Processing);
+            _putIcpTransferLog(_itIndex, _fromSa, to, Nat64.toNat(amount), #Processing);
         };
         return res;
     };
@@ -251,14 +253,15 @@ shared(installMsg) actor class CyclesMarket() = this {
         icpTransferLogs := Trie.put(icpTransferLogs, keyn(Nat64.toNat(_itIndex)), Nat.equal, {
             from = _from;
             to = _to;
-            value = _value;
+            value = _value; // not included fee
+            fee = Nat64.toNat(ICP_FEE);
             status = _setStatus;
             updateTime = _now();
         }).0;
         if (_itIndex > 10000){
             icpTransferLogs := Trie.remove(icpTransferLogs, keyn(Nat64.toNat(_itIndex-10000)), Nat.equal).0;
         };
-        itIndex += 1;
+        if (_itIndex == itIndex) { itIndex += 1; };
     };
     private func _putCyclesTransferLog(_ctIndex: Nat64, _from: Principal, _to: Principal, _value: Nat, _setStatus: TransStatus) : (){
         cyclesTransferLogs := Trie.put(cyclesTransferLogs, keyn(Nat64.toNat(_ctIndex)), Nat.equal, {
@@ -271,7 +274,7 @@ shared(installMsg) actor class CyclesMarket() = this {
         if (_ctIndex > 10000){
             cyclesTransferLogs := Trie.remove(cyclesTransferLogs, keyn(Nat64.toNat(_ctIndex-10000)), Nat.equal).0;
         };
-        ctIndex += 1;
+        if (_ctIndex == ctIndex) { ctIndex += 1; };
     };
     private func _subIcpFee(_icpE8s: IcpE8s) : Nat{
         if (_icpE8s > Nat64.toNat(ICP_FEE)){
@@ -439,19 +442,16 @@ shared(installMsg) actor class CyclesMarket() = this {
                     var icpErrMsg: ?Ledger.TransferError = null;
                     if (cycles >= MIN_CYCLES){
                         var mainBalance = Cycles.balance();
+                        let _ctIndex = ctIndex;
                         try{
                             let wallet: CyclesWallet.Self = actor(Principal.toText(cyclesWallet));
                             Cycles.add(cycles);
                             await wallet.wallet_receive();
-                            _putCyclesTransferLog(ctIndex, Principal.fromActor(this), cyclesWallet, cycles, #Success);
+                            _putCyclesTransferLog(_ctIndex, Principal.fromActor(this), cyclesWallet, cycles, #Success);
                         } catch(e){ 
-                            _putCyclesTransferLog(ctIndex, Principal.fromActor(this), cyclesWallet, cycles, #Processing);
-                            var mainBalance2 = Cycles.balance();
                             cyclesErrMsg := Error.message(e);
-                            if (mainBalance < MIN_CYCLES or Nat.sub(mainBalance, mainBalance2) < cycles){
-                                temp := (temp.0, cycles, temp.2, temp.3);
-                                _putCyclesTransferLog(ctIndex, Principal.fromActor(this), cyclesWallet, cycles, #Failure);
-                            };
+                            temp := (temp.0, cycles, temp.2, temp.3);
+                            _putCyclesTransferLog(_ctIndex, Principal.fromActor(this), cyclesWallet, cycles, #Failure);
                         };
                     };
                     if (icp >= MIN_ICP_E8S){
@@ -464,15 +464,16 @@ shared(installMsg) actor class CyclesMarket() = this {
                                 case(_){};
                             };
                         } catch(e){ 
-                            var mainBalance2: Nat = 0;
-                            try{
-                                mainBalance2 := Nat64.toNat((await ledger.account_balance({account = _getMainAccount()})).e8s);
-                                if (mainBalance < MIN_ICP_E8S or Nat.sub(mainBalance, mainBalance2) < icp){
-                                    temp := (temp.0, temp.1, temp.2, icp);
-                                };
-                            } catch(e){
-                                temp := (temp.0, temp.1, temp.2, icp);
-                            };
+                            temp := (temp.0, temp.1, temp.2, icp);
+                            // var mainBalance2: Nat = 0;
+                            // try{
+                            //     mainBalance2 := Nat64.toNat((await ledger.account_balance({account = _getMainAccount()})).e8s);
+                            //     if (mainBalance < MIN_ICP_E8S or Nat.sub(mainBalance, mainBalance2) < icp){
+                            //         temp := (temp.0, temp.1, temp.2, icp);
+                            //     };
+                            // } catch(e){
+                            //     temp := (temp.0, temp.1, temp.2, icp);
+                            // };
                         };
                     };
                     if (temp.1 >= MIN_CYCLES or temp.3 >= MIN_ICP_E8S){
@@ -1112,7 +1113,7 @@ shared(installMsg) actor class CyclesMarket() = this {
         if (from >= len) { return ([], true); };
         var res:[(Nat, IcpTransferLog)] = [];
         var i = from;
-        while(i < from+50){
+        while(i < from+50 and i < len){
             res := Array.append(res, [arr[i]]);
             i += 1;
         };
@@ -1130,7 +1131,7 @@ shared(installMsg) actor class CyclesMarket() = this {
         if (from >= len) { return ([], true); };
         var res:[(Nat, CyclesTransferLog)] = [];
         var i = from;
-        while(i < from+50){
+        while(i < from+50 and i < len){
             res := Array.append(res, [arr[i]]);
             i += 1;
         };
@@ -1148,7 +1149,7 @@ shared(installMsg) actor class CyclesMarket() = this {
         if (from >= len) { return ([], true); };
         var res:[(Nat, ErrorLog)] = [];
         var i = from;
-        while(i < from+50){
+        while(i < from+50 and i < len){
             res := Array.append(res, [arr[i]]);
             i += 1;
         };
@@ -1167,7 +1168,7 @@ shared(installMsg) actor class CyclesMarket() = this {
         if (from >= len) { return ([], true); };
         var res:[(Nat, ErrorLog, ErrorAction, ?CyclesWallet)] = [];
         var i = from;
-        while(i < from+50){
+        while(i < from+50 and i < len){
             res := Array.append(res, [arr[i]]);
             i += 1;
         };
@@ -1213,8 +1214,8 @@ shared(installMsg) actor class CyclesMarket() = this {
                 };
                 errors := Trie.remove(errors, keyn(_index), Nat.equal).0;
                 errorHistory := Trie.put(errorHistory, keyn(_index), Nat.equal, (error, action, _replaceCyclesWallet)).0;
-                if (_index > 10000){
-                    errorHistory := Trie.filter(errorHistory, func (k: Nat, v:(ErrorLog, ErrorAction, ?CyclesWallet)):Bool{ k > Nat.sub(_index,10000) });
+                if (_index > 2000){
+                    errorHistory := Trie.filter(errorHistory, func (k: Nat, v:(ErrorLog, ErrorAction, ?CyclesWallet)):Bool{ k > Nat.sub(_index,2000) });
                 };
             };
             case(_){ return false; };
@@ -1249,11 +1250,6 @@ shared(installMsg) actor class CyclesMarket() = this {
         pause := _pause;
         return true;
     };
-    /// query canister status: Add itself as a controller, canister_id = Principal.fromActor(<your actor name>)
-    public func canister_status() : async Monitee.canister_status {
-        let ic : Monitee.IC = actor("aaaaa-aa");
-        await ic.canister_status({ canister_id = Principal.fromActor(this) });
-    };
     /// canister memory
     public query func getMemory() : async (Nat,Nat,Nat,Nat32){
         return (Prim.rts_memory_size(), Prim.rts_heap_size(), Prim.rts_total_allocation(),Prim.stableMemorySize());
@@ -1262,4 +1258,29 @@ shared(installMsg) actor class CyclesMarket() = this {
     public query func getCycles() : async Nat{
         return return Cycles.balance();
     };
+
+    // DRC207 ICMonitor
+    /// DRC207 support
+    public func drc207() : async DRC207.DRC207Support{
+        return {
+            monitorable_by_self = true;
+            monitorable_by_blackhole = { allowed = true; canister_id = ?Principal.fromText("7hdtw-jqaaa-aaaak-aaccq-cai"); };
+            cycles_receivable = true;
+            timer = { enable = false; interval_seconds = null; }; 
+        };
+    };
+    /// canister_status
+    public func canister_status() : async DRC207.canister_status {
+        let ic : DRC207.IC = actor("aaaaa-aa");
+        await ic.canister_status({ canister_id = Principal.fromActor(this) });
+    };
+    /// receive cycles
+    // public func wallet_receive(): async (){
+    //     let amout = Cycles.available();
+    //     let accepted = Cycles.accept(amout);
+    // };
+    /// timer tick
+    // public func timer_tick(): async (){
+    //     //
+    // };
 }

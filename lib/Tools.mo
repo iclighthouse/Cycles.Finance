@@ -186,14 +186,14 @@ module {
         return Blob.fromArray(principalBlobToAccount(b, sa));
     };
     // To Account Hex
-    public func principalTextToAccountHex(t : Text) : Hex.Hex {
-        return Hex.encode(principalTextToAccount(t, null));
+    public func principalTextToAccountHex(t : Text, sa : ?[Nat8]) : Hex.Hex {
+        return Hex.encode(principalTextToAccount(t, sa));
     };
-    public func principalToAccountHex(p : Principal) : Hex.Hex {
-        return Hex.encode(principalToAccount(p, null));
+    public func principalToAccountHex(p : Principal, sa : ?[Nat8]) : Hex.Hex {
+        return Hex.encode(principalToAccount(p, sa));
     };
-    public func principalBlobToAccountHex(b : Blob) : Hex.Hex {
-        return Hex.encode(principalBlobToAccount(b, null));
+    public func principalBlobToAccountHex(b : Blob, sa : ?[Nat8]) : Hex.Hex {
+        return Hex.encode(principalBlobToAccount(b, sa));
     };
     // Account Hex to Account blob
     public func accountHexToAccountBlob(h: Hex.Hex) : ?Blob {
@@ -242,28 +242,23 @@ module {
         var crc : [Nat8] = CRC32.crc32(Array.freeze(hash));
         return Blob.fromArray(Array.append(crc, Array.freeze(hash)));   
     };
-    // get DRC20 calldata
-    public func getCalldata(_data: ?Blob): [Nat8]{
+    // get DRC calldata
+    public func getDrcCalldata(_data: ?Blob): [Nat8]{
         var data = Blob.toArray(Option.get(_data, Blob.fromArray([])));
-        if (data.size() > 9){
+        if (data.size() >= 4){
             let protocol = slice(data, 0, ?2);
             let version: Nat8 = data[3];
             if (protocol[0] == 68 and protocol[1] == 82 and protocol[2] == 67){
-                data := slice(data, 9, null);
+                data := slice(data, 4, null);
             };
         };
         return data;
     };
-    // set DRC20 calldata
-    public func setCalldata(_nonce: ?Nat32, _data: [Nat8]): Blob{
-        let protocol: [Nat8] = [68,82,67];
+    // set DRC calldata
+    public func setDrcCalldata(_data: [Nat8]): Blob{
+        let protocol: [Nat8] = [68,82,67]; //DRC
         let version: [Nat8] = [1];
-        var nonce: [Nat8] = [];
-        switch(_nonce){
-            case(?(n)){ nonce := Array.append([1:Nat8], Binary.BigEndian.fromNat32(n)); };
-            case(_){ nonce := [0,0,0,0,0]; };
-        };
-        let data = Array.append(Array.append(Array.append(protocol, version), nonce), _data);
+        let data = Array.append(Array.append(protocol, version), _data);
         return Blob.fromArray(data);
     };
     //for test

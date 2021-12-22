@@ -2,13 +2,8 @@
 
 **Website**: http://cycles.finance  
 **Canister Id**: 6nmrm-laaaa-aaaak-aacfq-cai   
-**Module hash**: bc7740d5b33c40f594a3cc0af31950b89e003514c85097a4d30adda0539e1b9a  
+**Module hash**: 9b75251a8cb96df179e6994763e7d84cbdc2cc1aa91551e60fda0b624b3dcce2  
 **Version**: 0.5  
-
-**Swap Transaction Record Storage**  
-**Canister Id**: 6ylab-kiaaa-aaaak-aacga-cai   
-**Module hash**: 1f852b023a9a43d2830d279ff52f1999e4c56a1906784b4bfafad882280fdcc4  
-**Version**: 1  
 
 ### 申明：
 

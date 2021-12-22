@@ -65,7 +65,7 @@ module {
         #Failure;
         #Fallback;
     };
-    public type IcpTransferLog = {from: AccountId; to: AccountId; value: IcpE8s; status: TransStatus; updateTime: Timestamp};
+    public type IcpTransferLog = {from: AccountId; to: AccountId; value: IcpE8s; fee: IcpE8s; status: TransStatus; updateTime: Timestamp};
     public type CyclesTransferLog = {from: Principal; to: Principal; value: CyclesAmount; status: TransStatus; updateTime: Timestamp};
     public type ErrorLog = {
         #IcpSaToMain: {
