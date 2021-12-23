@@ -69,7 +69,7 @@ shared(installMsg) actor class CyclesMarket() = this {
     private stable var FEE: Nat = 10000; // = feeRate * 1000000  (value 10000 means 1.0%)
     private stable var ICP_LIMIT: Nat = 10*100000000;  // e8s 
     private stable var CYCLES_LIMIT: Nat = 300*1000000000000; //cycles
-    private stable var MAX_CACHE_TIME: Nat = 3 * 30 * 24 * 3600; //seconds  3 months
+    private stable var MAX_CACHE_TIME: Nat = 3 * 30 * 24 * 3600 * 1000000000; //  3 months
     private stable var MAX_CACHE_NUMBER_PER: Nat = 20;
     private stable var STORAGE_CANISTER: Text = "6ylab-kiaaa-aaaak-aacga-cai";
     private stable var MAX_STORAGE_TRIES: Nat = 3; 
@@ -516,11 +516,11 @@ shared(installMsg) actor class CyclesMarket() = this {
     private func _getTxnRecord(_txid: Txid): ?TxnRecord{
         return Trie.get(txnRecords, keyb(_txid), Blob.equal);
     };
-    private func _insertTxnRecord(_swap: TxnRecord): (){
-        var txid = _swap.txid;
-        txnRecords := Trie.put(txnRecords, keyb(txid), Blob.equal, _swap).0;
+    private func _insertTxnRecord(_txn: TxnRecord): (){
+        var txid = _txn.txid;
+        txnRecords := Trie.put(txnRecords, keyb(txid), Blob.equal, _txn).0;
         _pushGlobalTxns(txid);
-        _pushLastTxn(_swap.account, txid);
+        _pushLastTxn(_txn.account, txid);
     };
     private func _deleteTxnRecord(_txid: Txid): (){
         txnRecords := Trie.remove(txnRecords, keyb(_txid), Blob.equal).0;
@@ -732,7 +732,7 @@ shared(installMsg) actor class CyclesMarket() = this {
             };
         };
     };
-    public query func txnRecord(_txid: Txid) : async (swap: ?TxnRecord){
+    public query func txnRecord(_txid: Txid) : async (txn: ?TxnRecord){
         return _getTxnRecord(_txid);
     };
     public query func lastTxids(_account: ?Address) : async [Txid]{
@@ -825,7 +825,7 @@ shared(installMsg) actor class CyclesMarket() = this {
         _updateShare(account, shareBalance + shareAmount);
         // insert record
         let txid = _getTxid(caller);
-        var swap: TxnRecord = {
+        var txn: TxnRecord = {
             txid = txid;
             msgCaller = null;
             caller = caller;
@@ -844,7 +844,7 @@ shared(installMsg) actor class CyclesMarket() = this {
             data = _data;
         };
         _addNonce(caller);
-        _insertTxnRecord(swap);
+        _insertTxnRecord(txn);
         let f = _withdraw(); //refund
         // push storeRecords
         storeRecords := List.push((txid, 0), storeRecords);
@@ -887,7 +887,7 @@ shared(installMsg) actor class CyclesMarket() = this {
         _updateShare(caller, shareBalance - shareAmount);
         // insert record
         let txid = _getTxid(caller);
-        var swap: TxnRecord = {
+        var txn: TxnRecord = {
             txid = txid;
             msgCaller = null;
             caller = caller;
@@ -906,7 +906,7 @@ shared(installMsg) actor class CyclesMarket() = this {
             data = _data;
         };
         _addNonce(caller);
-        _insertTxnRecord(swap);
+        _insertTxnRecord(txn);
         let f = _withdraw();
         // push storeRecords
         storeRecords := List.push((txid, 0), storeRecords);
@@ -947,7 +947,7 @@ shared(installMsg) actor class CyclesMarket() = this {
         inProgress := List.push((msg.caller, 0, account, outIcpAmount), inProgress);// send icp
         // insert record
         let txid = _getTxid(caller);
-        var swap: TxnRecord = {
+        var txn: TxnRecord = {
             txid = txid;
             msgCaller = null;
             caller = caller;
@@ -966,7 +966,7 @@ shared(installMsg) actor class CyclesMarket() = this {
             data = _data;
         };
         _addNonce(caller);
-        _insertTxnRecord(swap);
+        _insertTxnRecord(txn);
         let f = _withdraw();
         // push storeRecords
         storeRecords := List.push((txid, 0), storeRecords);
@@ -1019,7 +1019,7 @@ shared(installMsg) actor class CyclesMarket() = this {
         inProgress := List.push((_cyclesWallet, outCyclesAmount, caller, reFund), inProgress);
         // insert record
         let txid = _getTxid(caller);
-        var swap: TxnRecord = {
+        var txn: TxnRecord = {
             txid = txid;
             msgCaller = null;
             caller = caller;
@@ -1038,7 +1038,7 @@ shared(installMsg) actor class CyclesMarket() = this {
             data = _data;
         };
         _addNonce(caller);
-        _insertTxnRecord(swap);
+        _insertTxnRecord(txn);
         let f = _withdraw();
         // push storeRecords
         storeRecords := List.push((txid, 0), storeRecords);
@@ -1071,7 +1071,7 @@ shared(installMsg) actor class CyclesMarket() = this {
         inProgress := List.push((_cyclesWallet, outCyclesAmount, caller, outIcpAmount), inProgress);
         // insert record
         let txid = _getTxid(caller);
-        var swap: TxnRecord = {
+        var txn: TxnRecord = {
             txid = txid;
             msgCaller = null;
             caller = caller;
@@ -1090,7 +1090,7 @@ shared(installMsg) actor class CyclesMarket() = this {
             data = _data;
         };
         _addNonce(caller);
-        _insertTxnRecord(swap);
+        _insertTxnRecord(txn);
         let f = _withdraw(); // send cycles and icp
         // push storeRecords
         storeRecords := List.push((txid, 0), storeRecords);
@@ -1265,7 +1265,7 @@ shared(installMsg) actor class CyclesMarket() = this {
         return {
             monitorable_by_self = true;
             monitorable_by_blackhole = { allowed = true; canister_id = ?Principal.fromText("7hdtw-jqaaa-aaaak-aaccq-cai"); };
-            cycles_receivable = true;
+            cycles_receivable = false;
             timer = { enable = false; interval_seconds = null; }; 
         };
     };
