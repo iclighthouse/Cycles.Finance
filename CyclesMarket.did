@@ -187,6 +187,7 @@ type CyclesMarket = service {
    lastTxids: (opt Address) -> (vec Txid) query;
    liquidity: (opt Address) -> (Liquidity) query;
    txnRecord: (Txid) -> (opt TxnRecord) query;
+   txnRecord2: (Txid) -> (opt TxnRecord);
    version: () -> (text) query;
 };
 service : () -> CyclesMarket

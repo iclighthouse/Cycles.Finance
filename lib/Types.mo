@@ -134,6 +134,8 @@ module {
         time: Time.Time;
         index: Nat;
         nonce: Nonce;
+        orderType: { #AMM; #OrderBook; };
+        details: [{counterparty: Txid; token0Value: BalanceChange; token1Value: BalanceChange;}];
         data: ?Data;
     };
     public type TxnResult = Result.Result<{   //<#ok, #err> 

@@ -2,7 +2,7 @@
 
 **Website**: http://cycles.finance  
 **Canister Id**: 6nmrm-laaaa-aaaak-aacfq-cai   
-**Module hash**: 4eeea46d61e7acc386d36d3d4851b337633eaf8e8ede0e38878ce6eec5b11aa1  
+**Module hash**: 9e1d7ec2731ada45d6cb5d776ecb0b3d06300bae0a14b95f7ab1836cc53f7fcf  
 **Version**: 0.5  
 
 ### 申明：
@@ -364,6 +364,8 @@ type TxnRecord =
    token1: TokenType;
    token1Value: BalanceChange;
    txid: Txid;
+   orderType: { #AMM; #OrderBook; };
+   details: [{counterparty: Txid; token0Value: BalanceChange; token1Value: BalanceChange;}];
  };
 type Txid = blob;
 type TransferError = 
@@ -483,6 +485,7 @@ type CyclesMarket = service {
    lastTxids: (opt Address) -> (vec Txid) query;
    liquidity: (opt Address) -> (Liquidity) query;
    txnRecord: (Txid) -> (opt TxnRecord) query;
+   txnRecord2: (Txid) -> (opt TxnRecord);
    version: () -> (text) query;
 };
 service : () -> CyclesMarket

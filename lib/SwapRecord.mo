@@ -15,7 +15,7 @@ import Option "mo:base/Option";
 import Prim "mo:⛔";
 import Principal "mo:base/Principal";
 import Text "mo:base/Text";
-import Types "Types";
+import Types "DRC205";
 import SHA224 "SHA224";
 
 module {
