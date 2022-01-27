@@ -11,8 +11,11 @@ import Array "mo:base/Array";
 import Binary "./lib/Binary";
 import Blob "mo:base/Blob";
 import Cycles "mo:base/ExperimentalCycles";
-import CyclesWallet "./sys/CyclesWallet";
+import CyclesModule "./sys/CyclesWallet";
+import DRC205 "./lib/DRC205";
+import DRC207 "./lib/DRC207";
 import Deque "mo:base/Deque";
+import Error "mo:base/Error";
 import Float "mo:base/Float";
 import Hash "mo:base/Hash";
 import Hex "./lib/Hex";
@@ -26,14 +29,11 @@ import Nat64 "mo:base/Nat64";
 import Option "mo:base/Option";
 import Prim "mo:⛔";
 import Principal "mo:base/Principal";
+import SHA224 "./lib/SHA224";
+import T "./lib/CF";
 import Time "mo:base/Time";
 import Tools "./lib/Tools";
-import SHA224 "./lib/SHA224";
 import Trie "mo:base/Trie";
-import Error "mo:base/Error";
-import T "./lib/Types";
-import DRC207 "./lib/DRC207";
-import DRC205 "./lib/DRC205";
 
 shared(installMsg) actor class CyclesMarket() = this {
     type Timestamp = T.Timestamp;  //seconds
@@ -62,6 +62,7 @@ shared(installMsg) actor class CyclesMarket() = this {
     type Config = T.Config;
     type TxnRecord = T.TxnRecord;
     type TxnResult = T.TxnResult;
+    type Yield = T.Yield;
 
     private stable var MIN_CYCLES: Nat = 100000000;
     private stable var MIN_ICP_E8S: Nat = 10000;
@@ -73,8 +74,9 @@ shared(installMsg) actor class CyclesMarket() = this {
     private stable var MAX_CACHE_NUMBER_PER: Nat = 100;
     private stable var STORAGE_CANISTER: Text = "6ylab-kiaaa-aaaak-aacga-cai";
     private stable var MAX_STORAGE_TRIES: Nat = 5; 
+    private stable var CYCLESFEE_RETENTION_RATE: Nat = 20; //% 
 
-    private let version_: Text = "0.5";
+    private let version_: Text = "0.6";
     private let ledger: Ledger.Self = actor("ryjl3-tyaaa-aaaaa-aaaba-cai");
     private func _now() : Timestamp{
         return Int.abs(Time.now() / 1000000000);
@@ -92,14 +94,16 @@ shared(installMsg) actor class CyclesMarket() = this {
     private stable var totalVol: Vol = { swapCyclesVol = 0; swapIcpVol = 0;};
     private stable var cumulFee: FeeBalance = { var cyclesBalance = 0; var icpBalance = 0; };
     private stable var feeBalance: FeeBalance = { var cyclesBalance = 0; var icpBalance = 0; };
+    private stable var yieldList = List.nil<Yield>(); 
+    private stable var rewards: Trie.Trie<AccountId, (cycles: CyclesAmount, icp: IcpE8s, updateTime: Timestamp)> = Trie.empty(); 
     private stable var itIndex: Nat64 = 0;  
     private stable var icpTransferLogs: Trie.Trie<Nat, IcpTransferLog> = Trie.empty();
     private stable var cyclesTransferLogs: Trie.Trie<Nat, CyclesTransferLog> = Trie.empty();
     private stable var ctIndex: Nat64 = 0;  
-
+    
     private stable var shares: Trie.Trie<AccountId, (Nat, ShareWeighted, CumulShareWeighted)> = Trie.empty();
     private stable var vols: Trie.Trie<AccountId, Vol> = Trie.empty(); 
-    private stable var inProgress = List.nil<(cyclesWallet: CyclesWallet, cycles: CyclesAmount, icpAccount: AccountId, icp: IcpE8s)>();
+    private stable var inProgress = List.nil<(cyclesWallet: CyclesWallet, cycles: CyclesAmount, icpAccount: AccountId, icp: IcpE8s, tries: Nat)>();
     private stable var errors: Trie.Trie<Nat, ErrorLog> = Trie.empty(); 
     private stable var errorIndex: Nat = 0;
     private stable var errorHistory = List.nil<(Nat, ErrorLog, ErrorAction, ?CyclesWallet)>();
@@ -122,6 +126,9 @@ shared(installMsg) actor class CyclesMarket() = this {
     };  // assert(_onlyOwner(msg.caller));
     private func _notPaused() : Bool { 
         return not(pause);
+    };
+    private func _natToFloat(_n: Nat) : Float{
+        return Float.fromInt64(Int64.fromNat64(Nat64.fromNat(_n)));
     };
     private func keyp(t: Principal) : Trie.Key<Principal> { return { key = t; hash = Principal.hash(t) }; };
     private func keyn(t: Nat) : Trie.Key<Nat> { return { key = t; hash = Hash.hash(t) }; };
@@ -333,7 +340,151 @@ shared(installMsg) actor class CyclesMarket() = this {
             updateTime = now;
         };
     };
+    private func _initYieldList() : (){
+        let now = _now();
+        for((k, v) in Trie.iter(shares)){
+            let share = _getShare(k);
+            if (share.1.shareTimeWeighted > 0){
+                let cycles = feeBalance.cyclesBalance * share.1.shareTimeWeighted / poolShareWeighted.shareTimeWeighted;
+                let icp = feeBalance.icpBalance * share.1.shareTimeWeighted / poolShareWeighted.shareTimeWeighted;
+                rewards := Trie.put(rewards, keyb(k), Blob.equal, (cycles, icp, now)).0;
+            };
+        };
+    };
+    private func _yieldListCloseItem() : (){
+        let now = _now();
+        let (yied_, list) = List.pop(yieldList);
+        switch(yied_){
+            case(?(yied)){
+                yieldList := List.push({
+                    accrued = yied.accrued;
+                    rate = yied.rate;   
+                    unitValue = yied.unitValue;
+                    updateTime = now;
+                    isClosed = true;
+                }, list);
+            };
+            case(_){ //init
+                _initYieldList();
+            };
+        };
+    };
+    private func _yieldListNewItem() : (){
+        let now = _now();
+        yieldList := List.push({
+            accrued = {cycles = 0; icp = 0;};
+            rate = {rateCycles = 0; rateIcp = 0; };   
+            unitValue = {cycles = unitValue * poolCycles / poolIcp; icp = unitValue;}; // per 1000000 shares
+            updateTime = now;
+            isClosed = false;
+        }, yieldList);
+    };
+    private func _updateYield(_cyclesFee: CyclesAmount, _icpFee: IcpE8s) : (){
+        let now = _now();
+        let (yied_, list) = List.pop(yieldList);
+        switch(yied_){
+            case(?(yied)){
+                if (not(yied.isClosed)){
+                    let accruedCycles = yied.accrued.cycles + _cyclesFee;
+                    let accruedIcp = yied.accrued.icp + _icpFee;
+                    let rateCycles = accruedCycles * 1000000 / poolShare;
+                    let rateIcp = accruedIcp * 1000000 / poolShare;
+                    yieldList := List.push({
+                        accrued = {cycles = accruedCycles; icp = accruedIcp;};
+                        rate = {rateCycles = rateCycles; rateIcp = rateIcp; };   
+                        unitValue = {cycles = unitValue * poolCycles / poolIcp; icp = unitValue;};
+                        updateTime = now;
+                        isClosed = false;
+                    }, list);
+                }else{
+                    _yieldListNewItem();
+                    return _updateYield(_cyclesFee, _icpFee);
+                };
+            };
+            case(_){ //init
+                _initYieldList();
+                _yieldListNewItem();
+                return _updateYield(_cyclesFee, _icpFee);
+            };
+        };
+    };
+    private func _calculateRewards(_a: AccountId, _includeCurrentPeriod: Bool) : (cycles: CyclesAmount, icp: IcpE8s, updateTime: Timestamp){
+        let now = _now();
+        let share = _getShare(_a);
+        var reward = Option.get(Trie.get(rewards, keyb(_a), Blob.equal), (0, 0, now));
+        var list = yieldList;
+        var isCompleted: Bool = false;
+        var updateTime: Timestamp = reward.2;
+        while (not(isCompleted)){
+            let item = List.pop<Yield>(list);
+            let yied_ = item.0;
+            list := item.1;
+            switch(yied_){
+                case(?(yied)){
+                    if (reward.2 < yied.updateTime){
+                        if (yied.isClosed or _includeCurrentPeriod){
+                            let cycles = reward.0 + share.0 * yied.rate.rateCycles / 1000000;
+                            let icp = reward.1 + share.0 * yied.rate.rateIcp / 1000000;
+                            updateTime := Nat.max(updateTime, yied.updateTime);
+                            reward := (cycles, icp, reward.2);
+                        };
+                    } else {
+                        isCompleted := true;
+                    };
+                };
+                case(_){ isCompleted := true; };
+            };
+        };
+        return (reward.0, reward.1, updateTime);
+    };
+    private func _apy(_period: Timestamp) : (apy: {apyCycles: Float; apyIcp: Float}){
+        let year = 365 * 24 * 3600; //seconds
+        let now = _now();
+        let start = Nat.sub(now, _period);
+        var list = yieldList;
+        var isCompleted: Bool = false;
+        var cyclesNumerator: Nat = 0;
+        var icpNumerator: Nat = 0;
+        var cyclesDenominator: Nat = 0;
+        var icpDenominator: Nat = 0;
+        var i: Nat = 0;
+        while (not(isCompleted)){
+            let item = List.pop<Yield>(list);
+            let yied_ = item.0;
+            list := item.1;
+            switch(yied_){
+                case(?(yied)){
+                    if (start < yied.updateTime){
+                        // if ( i == 0){ 
+                        //     cyclesNumerator := yied.unitValue.cycles; 
+                        //     icpNumerator := yied.unitValue.icp;
+                        // };
+                        cyclesNumerator += yied.rate.rateCycles;
+                        icpNumerator += yied.rate.rateIcp;
+                    } else {
+                        isCompleted := true;
+                    };
+                    if (yied.unitValue.cycles > 0 and yied.unitValue.icp > 0){
+                        cyclesDenominator := yied.unitValue.cycles; 
+                        icpDenominator := yied.unitValue.icp;
+                    };
+                };
+                case(_){ isCompleted := true; };
+            };
+            i += 1;
+        };
+        if (cyclesDenominator == 0 or icpDenominator == 0){
+            return {apyCycles = 0; apyIcp = 0};
+        }else{
+            return {
+                apyCycles = _natToFloat(cyclesNumerator) / _natToFloat(cyclesDenominator) * _natToFloat(year) / _natToFloat(_period);
+                apyIcp = _natToFloat(icpNumerator) / _natToFloat(icpDenominator) * _natToFloat(year) / _natToFloat(_period);
+            };
+        };
+    };
     private func _updatePoolShare(_newShare: Shares) : (){
+        _yieldListCloseItem();
+        _yieldListNewItem();
         poolShareWeighted := _getPoolShareWeighted();
         poolShare := _newShare;
     };
@@ -352,6 +503,8 @@ shared(installMsg) actor class CyclesMarket() = this {
         };
     };
     private func _updateShare(_a: AccountId, _newShare: Shares) : (){
+        let reward = _calculateRewards(_a, false);
+        rewards := Trie.put(rewards, keyb(_a), Blob.equal, reward).0;
         let share = _getShare(_a);
         shares := Trie.put(shares, keyb(_a), Blob.equal, (_newShare, share.1, share.2)).0;
     };
@@ -386,50 +539,65 @@ shared(installMsg) actor class CyclesMarket() = this {
             };
         };
     };
+    private func _updateTriesCount() : async (){
+        let (values_, list) = List.pop(inProgress);
+        switch(values_){
+            case(?(values)){
+                inProgress := List.push((values.0, values.1, values.2, values.3, values.4 + 1), list);
+            };
+            case(_){};
+        };
+    };
     private func _withdraw() : async (){
-        var item = List.pop(inProgress);
-        while (Option.isSome(item.0)){
+        //var item = List.pop(inProgress);
+        await _updateTriesCount();
+        let item = List.pop(inProgress);
+        //while (Option.isSome(item.0)){
             inProgress := item.1;
             switch(item.0){
-                case(?(cyclesWallet, cycles, icpAccount, icp)){
+                case(?(cyclesWallet, cycles, icpAccount, icp, tries)){
                     var temp = (cyclesWallet, 0, icpAccount, 0);
                     var cyclesErrMsg: Text = "";
                     var icpErrMsg: ?Ledger.TransferError = null;
-                    if (cycles >= MIN_CYCLES){
-                        var mainBalance = Cycles.balance();
-                        let _ctIndex = ctIndex;
-                        try{
-                            let wallet: CyclesWallet.Self = actor(Principal.toText(cyclesWallet));
-                            Cycles.add(cycles);
-                            await wallet.wallet_receive();
-                            _putCyclesTransferLog(_ctIndex, Principal.fromActor(this), cyclesWallet, cycles, #Success);
-                        } catch(e){ 
-                            cyclesErrMsg := Error.message(e);
-                            temp := (temp.0, cycles, temp.2, temp.3);
-                            _putCyclesTransferLog(_ctIndex, Principal.fromActor(this), cyclesWallet, cycles, #Failure);
-                        };
-                    };
-                    if (icp >= MIN_ICP_E8S){
-                        var mainBalance: Nat = 0;
-                        try{
-                            mainBalance := Nat64.toNat((await ledger.account_balance({account = _getMainAccount()})).e8s);
-                            let res = await _sendIcpFromMA(icpAccount, icp);
-                            switch(res){
-                                case(#Err(e)){ icpErrMsg := ?e; throw Error.reject("ICP sending error!");};
-                                case(_){};
+                    if (tries <= 1){
+                        if (cycles >= MIN_CYCLES){
+                            try{
+                                let wallet: CyclesModule.Self = actor(Principal.toText(cyclesWallet));
+                                Cycles.add(cycles);
+                                await wallet.wallet_receive();
+                                _putCyclesTransferLog(ctIndex, Principal.fromActor(this), cyclesWallet, cycles, #Success);
+                            } catch(e){ 
+                                cyclesErrMsg := Error.message(e);
+                                temp := (temp.0, cycles, temp.2, temp.3);
+                                _putCyclesTransferLog(ctIndex, Principal.fromActor(this), cyclesWallet, cycles, #Failure);
                             };
-                        } catch(e){ 
-                            temp := (temp.0, temp.1, temp.2, icp);
-                            // var mainBalance2: Nat = 0;
-                            // try{
-                            //     mainBalance2 := Nat64.toNat((await ledger.account_balance({account = _getMainAccount()})).e8s);
-                            //     if (mainBalance < MIN_ICP_E8S or Nat.sub(mainBalance, mainBalance2) < icp){
-                            //         temp := (temp.0, temp.1, temp.2, icp);
-                            //     };
-                            // } catch(e){
-                            //     temp := (temp.0, temp.1, temp.2, icp);
-                            // };
                         };
+                        if (icp >= MIN_ICP_E8S){
+                            var mainBalance: Nat = 0;
+                            try{
+                                mainBalance := Nat64.toNat((await ledger.account_balance({account = _getMainAccount()})).e8s);
+                                let res = await _sendIcpFromMA(icpAccount, icp);
+                                switch(res){
+                                    case(#Err(e)){ icpErrMsg := ?e; throw Error.reject("ICP sending error!");};
+                                    case(_){};
+                                };
+                            } catch(e){ 
+                                temp := (temp.0, temp.1, temp.2, icp);
+                                // var mainBalance2: Nat = 0;
+                                // try{
+                                //     mainBalance2 := Nat64.toNat((await ledger.account_balance({account = _getMainAccount()})).e8s);
+                                //     if (mainBalance < MIN_ICP_E8S or Nat.sub(mainBalance, mainBalance2) < icp){
+                                //         temp := (temp.0, temp.1, temp.2, icp);
+                                //     };
+                                // } catch(e){
+                                //     temp := (temp.0, temp.1, temp.2, icp);
+                                // };
+                            };
+                        };
+                    }else{
+                        temp := (temp.0, cycles, temp.2, icp);
+                        cyclesErrMsg := "Execution error.";
+                        icpErrMsg := null;
                     };
                     if (temp.1 >= MIN_CYCLES or temp.3 >= MIN_ICP_E8S){
                         errors := Trie.put(errors, keyn(errorIndex), Nat.equal, #Withdraw({
@@ -444,13 +612,16 @@ shared(installMsg) actor class CyclesMarket() = this {
                 };
                 case(_){};
             };
-            item := List.pop(inProgress);
-        };
+            //item := List.pop(inProgress);
+            if (List.size(inProgress) > 0) { await _withdraw(); };
+        //};
     };
     private func _chargeFee(_cyclesFee: CyclesAmount, _icpFee: IcpE8s) : (){
-        feeBalance.cyclesBalance += _cyclesFee*8/10;
+        let cyclesFee = _cyclesFee * Nat.sub(100, CYCLESFEE_RETENTION_RATE) / 100;
+        _updateYield(cyclesFee, _icpFee);
+        feeBalance.cyclesBalance += cyclesFee;
         feeBalance.icpBalance += _icpFee;
-        cumulFee.cyclesBalance += _cyclesFee*8/10;
+        cumulFee.cyclesBalance += cyclesFee;
         cumulFee.icpBalance += _icpFee;
     };
     private func _volatility(_newPoolCycles: CyclesAmount, _newPoolIcp: IcpE8s) : Nat{
@@ -564,7 +735,7 @@ shared(installMsg) actor class CyclesMarket() = this {
                                     switch (Deque.popBack(txids)){
                                         case(?(q, v)){
                                             txids := q;
-					                        size -= 1;
+                                            size -= 1;
                                         };
                                         case(_){};
                                     };
@@ -573,14 +744,22 @@ shared(installMsg) actor class CyclesMarket() = this {
                                             let txn_ = _getTxnRecord(txid);
                                             switch(txn_){
                                                 case(?(txn)){ timestamp := txn.time; };
-                                                case(_){ timestamp := Time.now(); };
+                                                case(_){ };
                                             };
                                         };
                                         case(_){ timestamp := Time.now(); };
                                     };
                                 };
                             };
-                            case(_){};
+                            case(_){
+                                switch (Deque.popBack(txids)){
+                                    case(?(q, v)){
+                                        txids := q;
+                                        size -= 1;
+                                    };
+                                    case(_){};
+                                };
+                            };
                         };
                     };
                     case(_){};
@@ -613,8 +792,8 @@ shared(installMsg) actor class CyclesMarket() = this {
     private func _drc205Store() : async (){
         let drc205: DRC205.Self = actor(STORAGE_CANISTER);
         var _storeRecords = List.nil<(Txid, Nat)>();
-        var item = List.pop(storeRecords);
         let storageFee = await drc205.fee();
+        var item = List.pop(storeRecords);
         while (Option.isSome(item.0)){
             storeRecords := item.1;
             switch(item.0){
@@ -661,6 +840,7 @@ shared(installMsg) actor class CyclesMarket() = this {
             MAX_CACHE_NUMBER_PER = ?MAX_CACHE_NUMBER_PER;
             STORAGE_CANISTER = ?STORAGE_CANISTER;
             MAX_STORAGE_TRIES = ?MAX_STORAGE_TRIES;
+            CYCLESFEE_RETENTION_RATE = ?CYCLESFEE_RETENTION_RATE;
         };
     };
     public query func getAccountId(_account: Address) : async Text{
@@ -678,7 +858,7 @@ shared(installMsg) actor class CyclesMarket() = this {
                     icpE8s = poolIcp;
                     shares = poolShare;
                     shareWeighted = _getPoolShareWeighted();
-                    cumulShareWeighted = _getPoolShareWeighted().shareTimeWeighted;
+                    //cumulShareWeighted = _getPoolShareWeighted().shareTimeWeighted;
                     unitValue = (unitCyclesFloat, unitIcpFloat);
                     vol = totalVol;
                     priceWeighted = _getPriceWeighted();
@@ -694,7 +874,7 @@ shared(installMsg) actor class CyclesMarket() = this {
                     icpE8s = poolIcp * share / poolShare;
                     shares = share;
                     shareWeighted = shareWeighted;
-                    cumulShareWeighted = cumulShareWeighted;
+                    //cumulShareWeighted = cumulShareWeighted;
                     unitValue = (unitCyclesFloat, unitIcpFloat);
                     vol = vol;
                     priceWeighted = _getPriceWeighted();
@@ -703,30 +883,27 @@ shared(installMsg) actor class CyclesMarket() = this {
             };
         };
     };
-    public query func feeStatus(_account: ?Address) : async FeeStatus{
-        switch(_account) {
-            case(null){
-                return {
-                    fee = Float.fromInt64(Int64.fromNat64(Nat64.fromNat(FEE))) / 1000000;
-                    cumulFee = { cyclesBalance = cumulFee.cyclesBalance; icpBalance = cumulFee.icpBalance; };
-                    totalFee = { cyclesBalance = feeBalance.cyclesBalance; icpBalance = feeBalance.icpBalance; };
-                    myPortion = null;
-                };
-            };
-            case(?(_a)){
-                let account = _getAccountId(_a);
-                let shareWeighted = _getShare(account).1;
-                return {
-                    fee = Float.fromInt64(Int64.fromNat64(Nat64.fromNat(FEE))) / 1000000;
-                    cumulFee = { cyclesBalance = cumulFee.cyclesBalance; icpBalance = cumulFee.icpBalance; };
-                    totalFee = { cyclesBalance = feeBalance.cyclesBalance; icpBalance = feeBalance.icpBalance; };
-                    myPortion = ?({
-                        cyclesBalance = feeBalance.cyclesBalance * shareWeighted.shareTimeWeighted / _getPoolShareWeighted().shareTimeWeighted;
-                        icpBalance = feeBalance.icpBalance * shareWeighted.shareTimeWeighted / _getPoolShareWeighted().shareTimeWeighted;
-                    });
-                };
-            };
+    public query func feeStatus() : async FeeStatus{
+        return {
+            fee = Float.fromInt64(Int64.fromNat64(Nat64.fromNat(FEE))) / 1000000;
+            cumulFee = { cyclesBalance = cumulFee.cyclesBalance; icpBalance = cumulFee.icpBalance; };
+            totalFee = { cyclesBalance = feeBalance.cyclesBalance; icpBalance = feeBalance.icpBalance; };
         };
+    };
+    public query func yield() : async (apy24h: {apyCycles: Float; apyIcp: Float}, apy7d: {apyCycles: Float; apyIcp: Float}){
+        return (_apy(24*3600), _apy(7*24*3600));
+    };
+    public query func lpRewards(_account: Address) : async ({cycles:Nat; icp:Nat}){
+        let account = _getAccountId(_account);
+        let accrued = _calculateRewards(account, true);
+        return ({cycles=accrued.0; icp=accrued.1});
+    };
+    public query func yieldRateList() : async [Yield]{
+        return Tools.slice(List.toArray(yieldList), 0, ?100);
+    };
+    public query func rewardsBalance(_account: Address) : async ?(cycles: CyclesAmount, icp: IcpE8s, updateTime: Timestamp){
+        let account = _getAccountId(_account);
+        return Trie.get(rewards, keyb(account), Blob.equal);
     };
     public query func txnRecord(_txid: Txid) : async (txn: ?TxnRecord){
         return _getTxnRecord(_txid);
@@ -839,11 +1016,12 @@ shared(installMsg) actor class CyclesMarket() = this {
         let accept = Cycles.accept(cyclesAmount);
         _putCyclesTransferLog(ctIndex, msg.caller, Principal.fromActor(this), accept, #Success);
         if (accept < cyclesAmount){
-            inProgress := List.push((msg.caller, accept, account, icpBalance), inProgress); // fallback cycles & icp
+            inProgress := List.push((msg.caller, accept, account, icpBalance, 0), inProgress); // fallback cycles & icp
+            let f = _withdraw();
             return #err({code=#UndefinedError; message="Accepting cycles error."});
         };
         if (icpBalance > icpAmount + Nat64.toNat(ICP_FEE)*2){
-            inProgress := List.push((msg.caller, 0, account, Nat.sub(icpBalance, icpAmount+Nat64.toNat(ICP_FEE))), inProgress);
+            inProgress := List.push((msg.caller, 0, account, Nat.sub(icpBalance, icpAmount+Nat64.toNat(ICP_FEE)), 0), inProgress);
         };
         _addLiquidity(cyclesAmount, icpAmount);
         let shareAmount = _calcuShare(cyclesAmount, icpAmount);
@@ -874,10 +1052,8 @@ shared(installMsg) actor class CyclesMarket() = this {
         };
         _addNonce(caller);
         _insertTxnRecord(txn);
-        let f = _withdraw(); //refund
-        // push storeRecords
         storeRecords := List.push((txid, 0), storeRecords);
-        // records storage
+        let f = _withdraw(); //refund
         let store = _drc205Store();
         return #ok({ txid = txid; cycles = #DebitRecord(cyclesAmount); icpE8s = #DebitRecord(icpAmount); shares = #Mint(shareAmount); });
     };
@@ -911,7 +1087,7 @@ shared(installMsg) actor class CyclesMarket() = this {
             return #err({code=#InvalidCyclesAmout; message="Invalid cycles amount."});
         };
         // begin operation
-        inProgress := List.push((_cyclesWallet, cyclesAmount, caller, icpAmount), inProgress);
+        inProgress := List.push((_cyclesWallet, cyclesAmount, caller, icpAmount, 0), inProgress);
         _removeLiquidity(cyclesAmount, icpAmount);
         _updatePoolShare(poolShare - shareAmount);
         _updateShare(caller, shareBalance - shareAmount);
@@ -939,10 +1115,8 @@ shared(installMsg) actor class CyclesMarket() = this {
         };
         _addNonce(caller);
         _insertTxnRecord(txn);
-        let f = _withdraw();
-        // push storeRecords
         storeRecords := List.push((txid, 0), storeRecords);
-        // records storage
+        let f = _withdraw();
         let store = _drc205Store();
         return #ok({ txid = txid; cycles = #CreditRecord(cyclesAmount); icpE8s = #CreditRecord(_subIcpFee(icpAmount)); shares = #Burn(shareAmount); });
     };
@@ -973,7 +1147,8 @@ shared(installMsg) actor class CyclesMarket() = this {
         let inCyclesAmount = Cycles.accept(cyclesAvailable);
         _putCyclesTransferLog(ctIndex, msg.caller, Principal.fromActor(this), inCyclesAmount, #Success);
         if (inCyclesAmount < cyclesAvailable){
-            inProgress := List.push((msg.caller, inCyclesAmount, account, 0), inProgress); // fallback cycles
+            inProgress := List.push((msg.caller, inCyclesAmount, account, 0, 0), inProgress); // fallback cycles
+            let f = _withdraw();
             return #err({code=#UndefinedError; message="Accepting cycles error."});
         };
         _updateLiquidity(newPoolCycles, newPoolIcp);
@@ -981,7 +1156,7 @@ shared(installMsg) actor class CyclesMarket() = this {
         let icpFee = outIcpAmount * FEE / 1000000;
         _chargeFee(0, icpFee);
         outIcpAmount -= icpFee;
-        inProgress := List.push((msg.caller, 0, account, outIcpAmount), inProgress);// send icp
+        inProgress := List.push((msg.caller, 0, account, outIcpAmount, 0), inProgress);// send icp
         // insert record
         let txid = _getTxid(caller);
         var txn: TxnRecord = {
@@ -1006,10 +1181,8 @@ shared(installMsg) actor class CyclesMarket() = this {
         };
         _addNonce(caller);
         _insertTxnRecord(txn);
-        let f = _withdraw();
-        // push storeRecords
         storeRecords := List.push((txid, 0), storeRecords);
-        // records storage
+        let f = _withdraw();
         let store = _drc205Store();
         return #ok({ txid = txid; cycles = #DebitRecord(inCyclesAmount); icpE8s = #CreditRecord(_subIcpFee(outIcpAmount)); shares = #NoChange; });
     };
@@ -1056,7 +1229,7 @@ shared(installMsg) actor class CyclesMarket() = this {
         if (Nat.sub(inIcpBalance, inIcpAmount) > Nat64.toNat(ICP_FEE)*2){
             reFund := Nat.sub(inIcpBalance, inIcpAmount) - Nat64.toNat(ICP_FEE);
         };
-        inProgress := List.push((_cyclesWallet, outCyclesAmount, caller, reFund), inProgress);
+        inProgress := List.push((_cyclesWallet, outCyclesAmount, caller, reFund, 0), inProgress);
         // insert record
         let txid = _getTxid(caller);
         var txn: TxnRecord = {
@@ -1081,10 +1254,8 @@ shared(installMsg) actor class CyclesMarket() = this {
         };
         _addNonce(caller);
         _insertTxnRecord(txn);
-        let f = _withdraw();
-        // push storeRecords
         storeRecords := List.push((txid, 0), storeRecords);
-        // records storage
+        let f = _withdraw();
         let store = _drc205Store();
         return #ok({ txid = txid; cycles = #CreditRecord(outCyclesAmount); icpE8s = #DebitRecord(inIcpAmount); shares = #NoChange; });
     };
@@ -1094,21 +1265,43 @@ shared(installMsg) actor class CyclesMarket() = this {
         if (not(_checkNonce(caller, _nonce))){ 
             return #err({code=#NonceError; message="Nonce error! The nonce should be "#Nat.toText(_getNonce(caller))}); 
         };
-        if (poolShare == 0){
-            return #err({code=#PoolIsEmpty; message="Pool is Empty."});
-        };
+        // if (poolShare == 0){
+        //     return #err({code=#PoolIsEmpty; message="Pool is Empty."});
+        // };
         // begin operation
-        _updatePoolShare(poolShare);
+        poolShareWeighted := _getPoolShareWeighted();
         let (share, shareWeighted, cumulShareWeighted) = _getShare(caller);
-        let outCyclesAmount = feeBalance.cyclesBalance * shareWeighted.shareTimeWeighted / _getPoolShareWeighted().shareTimeWeighted;
-        let outIcpAmount = feeBalance.icpBalance * shareWeighted.shareTimeWeighted / _getPoolShareWeighted().shareTimeWeighted;
-        shares := Trie.put(shares, keyb(caller), Blob.equal, (share, {
-            shareTimeWeighted = 0;
-            updateTime = _now();
-        }, cumulShareWeighted)).0;
+        // let outCyclesAmount = feeBalance.cyclesBalance * shareWeighted.shareTimeWeighted / _getPoolShareWeighted().shareTimeWeighted;
+        // let outIcpAmount = feeBalance.icpBalance * shareWeighted.shareTimeWeighted / _getPoolShareWeighted().shareTimeWeighted;
+        // shares := Trie.put(shares, keyb(caller), Blob.equal, (share, {
+        //     shareTimeWeighted = 0;
+        //     updateTime = _now();
+        // }, cumulShareWeighted)).0;
+        var outCyclesAmount: Nat = 0;
+        var outIcpAmount: Nat = 0;
+        var updateTime = _now();
+        let reward0 = _calculateRewards(caller, true);
+        var reward = _calculateRewards(caller, false);
+        if ((reward0.0 > MIN_CYCLES or reward0.1 > MIN_ICP_E8S) and _now() > reward.2 + 3600){
+            _yieldListCloseItem();
+            _yieldListNewItem();
+            reward := _calculateRewards(caller, false);
+        };
+        //rewards := Trie.put(rewards, keyb(caller), Blob.equal, reward).0;
+        outCyclesAmount := reward.0;
+        outIcpAmount := reward.1;
+        updateTime := reward.2;
+        if (outCyclesAmount < MIN_CYCLES and outIcpAmount < MIN_ICP_E8S){
+            return #err({ code=#UndefinedError; message="Amount of rewards below threshold." });
+        };
+        if (share > 0){
+            rewards := Trie.put(rewards, keyb(caller), Blob.equal, (0, 0, updateTime)).0;
+        } else {
+            rewards := Trie.remove(rewards, keyb(caller), Blob.equal).0;
+        };
         feeBalance.cyclesBalance -= outCyclesAmount;
         feeBalance.icpBalance -= outIcpAmount;
-        inProgress := List.push((_cyclesWallet, outCyclesAmount, caller, outIcpAmount), inProgress);
+        inProgress := List.push((_cyclesWallet, outCyclesAmount, caller, outIcpAmount, 0), inProgress);
         // insert record
         let txid = _getTxid(caller);
         var txn: TxnRecord = {
@@ -1133,10 +1326,8 @@ shared(installMsg) actor class CyclesMarket() = this {
         };
         _addNonce(caller);
         _insertTxnRecord(txn);
-        let f = _withdraw(); // send cycles and icp
-        // push storeRecords
         storeRecords := List.push((txid, 0), storeRecords);
-        // records storage
+        let f = _withdraw(); // send cycles and icp
         let store = _drc205Store();
         return #ok({ txid = txid; cycles = #CreditRecord(outCyclesAmount); icpE8s = #CreditRecord(_subIcpFee(outIcpAmount)); shares = #NoChange; });
     };
@@ -1144,6 +1335,9 @@ shared(installMsg) actor class CyclesMarket() = this {
     /* 
     * Owner's Management
     */
+    public shared(msg) func getInProgress() : async [(CyclesWallet, CyclesAmount, AccountId, IcpE8s, Nat)]{
+        return Tools.slice(List.toArray(inProgress), 0, ?100);
+    };
     public shared(msg) func getIcpTransferLogs(_from: ?Nat) : async (logs: [(Nat, IcpTransferLog)], isEnd: Bool){  // page_size = 50
         assert(_onlyOwner(msg.caller));
         var from = Option.get(_from, Nat.sub(Nat.max(Nat64.toNat(itIndex),1), 1));
@@ -1156,8 +1350,11 @@ shared(installMsg) actor class CyclesMarket() = this {
                 case(?(icpTransferLog)){ res := Array.append(res, [(i, icpTransferLog)]); };
                 case(_){ isEnd := true; };
             };
-            if (i > 0) { i -= 1; };
-            if (i == 0) { isEnd := true; };
+            if (i > 0) { 
+                i -= 1; 
+            } else if (i == 0) { 
+                isEnd := true; 
+            };
         };
         return (res, isEnd);
     };
@@ -1173,8 +1370,11 @@ shared(installMsg) actor class CyclesMarket() = this {
                 case(?(cyclesTransferLog)){ res := Array.append(res, [(i, cyclesTransferLog)]); };
                 case(_){ isEnd := true; };
             };
-            if (i > 0) { i -= 1; };
-            if (i == 0) { isEnd := true; };
+            if (i > 0) { 
+                i -= 1; 
+            } else if (i == 0) { 
+                isEnd := true; 
+            };
         };
         return (res, isEnd);
     };
@@ -1190,8 +1390,11 @@ shared(installMsg) actor class CyclesMarket() = this {
                 case(?(error)){ res := Array.append(res, [(i, error)]); };
                 case(_){ isEnd := true; };
             };
-            if (i > 0) { i -= 1; };
-            if (i == 0) { isEnd := true; };
+            if (i > 0) { 
+                i -= 1; 
+            } else if (i == 0) { 
+                isEnd := true; 
+            };
         };
         return (res, isEnd);
     };
@@ -1208,45 +1411,49 @@ shared(installMsg) actor class CyclesMarket() = this {
         if (to >= len) { isEnd := true; };
         return (res, page, len, isEnd);
     };
-    public shared(msg) func handleError(_index: Nat, action: ErrorAction, _replaceCyclesWallet: ?CyclesWallet) : async Bool{
+    public shared(msg) func handleError(_index: Nat, _action: ErrorAction, _replaceCyclesWallet: ?CyclesWallet) : async Bool{
         switch(Trie.get(errors, keyn(_index), Nat.equal)){
             case(?(error)){
                 switch(error){
                     case(#IcpSaToMain(log)){
-                        if (action == #fallback){ // fallback
+                        if (_action == #fallback){ // fallback
                             let res = await _sendIcpFromMA(log.debit.1, log.debit.2);
                             switch(res){
                                 case(#Ok(blockheight)){};
                                 case(#Err(e)){ throw Error.reject("Icp fallback error!"); };
                             };
-                            //_putIcpTransferLog(log.debit.0, log.debit.1, _getMainAccount(), log.debit.2, #Fallback);
-                        };
+                        }else if (_action == #delete){
+                            //remove
+                        }else { return false; };
                     };
                     case(#Withdraw(log)){
-                        if (action == #resendIcpCycles){ // resend
+                        if (_action == #resendIcpCycles){ // resend
                             var cyclesWallet = log.credit.0;
                             switch(_replaceCyclesWallet){
                                 case(?(wallet)){ cyclesWallet := wallet; };
                                 case(_){};
                             };
-                            inProgress := List.push((cyclesWallet, log.credit.1, log.credit.2, log.credit.3), inProgress);
+                            inProgress := List.push((cyclesWallet, log.credit.1, log.credit.2, log.credit.3, 0), inProgress);
                             let f = _withdraw();
-                        }else if (action == #resendCycles){ // resend
+                        }else if (_action == #resendCycles){ // resend
                             var cyclesWallet = log.credit.0;
                             switch(_replaceCyclesWallet){
                                 case(?(wallet)){ cyclesWallet := wallet; };
                                 case(_){};
                             };
-                            inProgress := List.push((cyclesWallet, log.credit.1, log.credit.2, 0), inProgress);
+                            inProgress := List.push((cyclesWallet, log.credit.1, log.credit.2, 0, 0), inProgress);
                             let f = _withdraw();
-                        }else if (action == #resendIcp){ // resend
-                            inProgress := List.push((log.credit.0, 0, log.credit.2, log.credit.3), inProgress);
+                        }else if (_action == #resendIcp){ // resend
+                            inProgress := List.push((log.credit.0, 0, log.credit.2, log.credit.3, 0), inProgress);
                             let f = _withdraw();
-                        };
+                        }else if (_action == #delete){
+                            //remove
+                        }else { return false; };
                     };
                 };
+                //remove
                 errors := Trie.remove(errors, keyn(_index), Nat.equal).0;
-                errorHistory := List.push((_index, error, action, _replaceCyclesWallet), errorHistory);
+                errorHistory := List.push((_index, error, _action, _replaceCyclesWallet), errorHistory);
                 let historyLen = List.size(errorHistory);
                 var hi: Nat = 0;
                 if (historyLen > 1500){
@@ -1257,7 +1464,7 @@ shared(installMsg) actor class CyclesMarket() = this {
         };
         return true;
     };
-    // config   Note: FEE is ?/1000000
+    // config   Note: FEE is ?/1000000; CYCLESFEE_RETENTION_RATE is ?/100
     public shared(msg) func config(config: Config) : async Bool{ 
         assert(_onlyOwner(msg.caller));
         MIN_CYCLES := Option.get(config.MIN_CYCLES, MIN_CYCLES);
@@ -1270,6 +1477,7 @@ shared(installMsg) actor class CyclesMarket() = this {
         MAX_CACHE_NUMBER_PER := Option.get(config.MAX_CACHE_NUMBER_PER, MAX_CACHE_NUMBER_PER);
         STORAGE_CANISTER := Option.get(config.STORAGE_CANISTER, STORAGE_CANISTER);
         MAX_STORAGE_TRIES := Option.get(config.MAX_STORAGE_TRIES, MAX_STORAGE_TRIES);
+        CYCLESFEE_RETENTION_RATE := Option.get(config.CYCLESFEE_RETENTION_RATE, CYCLESFEE_RETENTION_RATE);
         return true;
     };
     public query func getOwner() : async Principal{  

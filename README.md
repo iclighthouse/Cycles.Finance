@@ -2,8 +2,8 @@
 
 **Website**: http://cycles.finance  
 **Canister Id**: 6nmrm-laaaa-aaaak-aacfq-cai   
-**Module hash**: 9e1d7ec2731ada45d6cb5d776ecb0b3d06300bae0a14b95f7ab1836cc53f7fcf  
-**Version**: 0.5  
+**Module hash**: 070a8e3cfb65204e29241278f19c5c440dabfbf6913e080441e647759102847e  
+**Version**: 0.6  
 
 ### Disclaimers.
 
@@ -32,8 +32,10 @@ Market making model: automatic market making model(AMM). Using a multiplicative 
 
 #### Liquidity reward pool
   
-- Liquidity providers receive liquidity rewards in proportion to the time-weighted share they hold.  
+- Liquidity providers can claim liquidity rewards in proportion to the share they hold.  
 - [Plan] Participate in the ICLighthouse liquidity mining program and receive ICL token rewards.
+
+Note: To participate in AMM, you need to add both ICP and Cycles assets to the liquidity pool. The amount of these two assets will change as users trade. For example, if you add 1 ICP and 30 TCycles to the liquidity pool, after a period of time you may withdraw 0.9 ICP and 33.3 TCycles or other possible amounts.
 
 
 ## How does it work?
@@ -127,7 +129,7 @@ To ensure that CyclesFinance can support large-scale application scenarios, the 
 ````
 dfx canister --network ic call 6nmrm-laaaa-aaaak-aacfq-cai liquidity '(null)'
 ````
-The `icpE8s` (or `1_180_746_538`) field in the return value is divided by the `cycles` (or `2_190_693_645`) field to indicate how many cycles can be exchanged for 1 e8s. This value is multiplied by 10^8 to indicate how many cycles can be exchanged for 1 icp. this is an estimate.
+The `cycles` (or `2_190_693_645`) field in the return value is divided by the `icpE8s` (or `1_180_746_538`) field to indicate how many cycles can be exchanged for 1 e8s. This value is multiplied by 10^8 to indicate how many cycles can be exchanged for 1 icp. this is an estimate.
 ````
 (
   record {
@@ -140,7 +142,6 @@ The `icpE8s` (or `1_180_746_538`) field in the return value is divided by the `c
       updateTime = 1_638_592_854 : nat;
       shareTimeWeighted = 3_894_326_391_123 : nat;
     };
-    cumulShareWeighted = 3_894_326_391_123 : nat;
     unitValue = record { 329155.999121 : float64; 0.972376 : float64 };
     shares = 809_508_285 : nat;
     cycles = 266_454_525_225_963 : nat;
@@ -248,7 +249,6 @@ Return (example). The `shares` (or `489_381_556`) field is the share of liquidit
       updateTime = 1_638_528_867 : nat;
       shareTimeWeighted = 695_045_889_662 : nat;
     };
-    cumulShareWeighted = 3_894_326_391_123 : nat;
     unitValue = record { 329748.544469 : float64; 0.970629 : float64 };
     shares = 49_990_000 : nat;   
     cycles = 16_484_143_085_896 : nat;
@@ -328,11 +328,11 @@ type TxnResult =
        variant {
          IcpTransferException;
          InsufficientShares;
+         InvalidCyclesAmout;
+         InvalidIcpAmout;
          NonceError;
          PoolIsEmpty;
          UnacceptableVolatility;
-         InvalidCyclesAmout;
-         InvalidIcpAmout;
          UndefinedError;
        };
       message: text;
@@ -351,6 +351,13 @@ type TxnRecord =
    caller: AccountId;
    cyclesWallet: opt CyclesWallet;
    data: opt Data;
+   details:
+    vec
+     record {
+       counterparty: Txid;
+       token0Value: BalanceChange;
+       token1Value: BalanceChange;
+     };
    fee: record {
           token0Fee: nat;
           token1Fee: nat;
@@ -359,6 +366,10 @@ type TxnRecord =
    msgCaller: opt principal;
    nonce: Nonce;
    operation: OperationType;
+   orderType: variant {
+                AMM;
+                OrderBook;
+              };
    shares: ShareChange;
    time: Time;
    token0: TokenType;
@@ -366,8 +377,6 @@ type TxnRecord =
    token1: TokenType;
    token1Value: BalanceChange;
    txid: Txid;
-   orderType: { #AMM; #OrderBook; };
-   details: [{counterparty: Txid; token0Value: BalanceChange; token1Value: BalanceChange;}];
  };
 type Txid = blob;
 type TransferError = 
@@ -377,6 +386,13 @@ type TransferError =
    TxCreatedInFuture;
    TxDuplicate: record {duplicate_of: BlockIndex;};
    TxTooOld: record {allowed_window_nanos: nat64;};
+ };
+type TransStatus = 
+ variant {
+   Failure;
+   Fallback;
+   Processing;
+   Success;
  };
 type TokenType = 
  variant {
@@ -415,7 +431,6 @@ type OperationType =
 type Nonce = nat;
 type Liquidity = 
  record {
-   cumulShareWeighted: CumulShareWeighted;
    cycles: nat;
    icpE8s: IcpE8s;
    priceWeighted: PriceWeighted;
@@ -428,6 +443,15 @@ type Liquidity =
               };
    vol: Vol;
  };
+type IcpTransferLog = 
+ record {
+   fee: IcpE8s;
+   from: AccountId;
+   status: TransStatus;
+   to: AccountId;
+   updateTime: Timestamp;
+   value: IcpE8s;
+ };
 type IcpE8s = nat;
 type ICP = record {e8s: nat64;};
 type FeeStatus = 
@@ -437,19 +461,71 @@ type FeeStatus =
                icpBalance: IcpE8s;
              };
    fee: float64;
-   myPortion: opt record {
-                    cyclesBalance: CyclesAmount;
-                    icpBalance: IcpE8s;
-                  };
    totalFee: record {
                cyclesBalance: CyclesAmount;
                icpBalance: IcpE8s;
              };
  };
+type ErrorLog = 
+ variant {
+   IcpSaToMain:
+    record {
+      debit: record {
+               nat64;
+               AccountId;
+               IcpE8s;
+             };
+      errMsg: TransferError;
+      time: Timestamp;
+      user: AccountId;
+    };
+   Withdraw:
+    record {
+      credit: record {
+                CyclesWallet;
+                CyclesAmount;
+                AccountId;
+                IcpE8s;
+              };
+      cyclesErrMsg: text;
+      icpErrMsg: opt TransferError;
+      time: Timestamp;
+      user: AccountId;
+    };
+ };
+type ErrorAction = 
+ variant {
+   delete;
+   fallback;
+   resendCycles;
+   resendIcp;
+   resendIcpCycles;
+ };
 type Data = blob;
+type DRC207Support = 
+ record {
+   cycles_receivable: bool;
+   monitorable_by_blackhole:
+    record {
+      allowed: bool;
+      canister_id: opt principal;
+    };
+   monitorable_by_self: bool;
+   timer: record {
+            enable: bool;
+            interval_seconds: opt nat;
+          };
+ };
 type CyclesWallet = principal;
+type CyclesTransferLog = 
+ record {
+   from: principal;
+   status: TransStatus;
+   to: principal;
+   updateTime: Timestamp;
+   value: CyclesAmount;
+ };
 type CyclesAmount = nat;
-type CumulShareWeighted = nat;
 type Config = 
  record {
    CYCLES_LIMIT: opt nat;
@@ -462,11 +538,12 @@ type Config =
    MIN_CYCLES: opt nat;
    MIN_ICP_E8S: opt nat;
    STORAGE_CANISTER: opt text;
+   CYCLESFEE_RETENTION_RATE: opt nat;
  };
 type BlockIndex = nat64;
 type BalanceChange = 
  variant {
-   CreditRecrod: nat;
+   CreditRecord: nat;
    DebitRecord: nat;
    NoChange;
  };
@@ -481,13 +558,15 @@ type CyclesMarket = service {
    claim: (CyclesWallet, opt Nonce, opt Sa, opt Data) -> (TxnResult);
    count: (opt Address) -> (nat) query;
    canister_status: () -> (canister_status);
-   feeStatus: (opt Address) -> (FeeStatus) query;
+   feeStatus: () -> (FeeStatus) query;
    getConfig: () -> (Config) query;
    getEvents: (opt Address) -> (vec TxnRecord) query;
    lastTxids: (opt Address) -> (vec Txid) query;
    liquidity: (opt Address) -> (Liquidity) query;
+   lpRewards: (Address) -> (record { cycles: nat; icp: nat;}) query;
    txnRecord: (Txid) -> (opt TxnRecord) query;
    txnRecord2: (Txid) -> (opt TxnRecord);
+   yield: () -> (record { apyCycles: float64; apyIcp: float64;}, record {apyCycles: float64; apyIcp: float64;}) query;
    version: () -> (text) query;
 };
 service : () -> CyclesMarket
